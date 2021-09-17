@@ -1,0 +1,1414 @@
+///$tab 0 Main
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;-$#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET CreateSearchIndexOnReload=1;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+SET HidePrefix = '_';
+
+//16.07.2021 Added Min Bid Value to Lot
+//20.07.2021 Added Availability of an auction
+
+///$tab 1 Parameters
+// Paths to local Data
+Set scrDIC_QVD_PATH = 'lib://OCDSint/Moldova/01_QVDDB/01_Dictionary/';
+Set scrTRN_QVD_PATH = 'lib://OCDSint/Moldova/01_QVDDB/02_Transaction/';
+Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Moldova/01_QVDDB/03_LocalData/';
+Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Moldova/02_LocalFiles/';
+
+//links 
+Set scrProcLinc = 'https://mtender.gov.md/tenders/';
+Set scrOpenMoney = 'https://openmoney.md/companies/';
+
+//Current year and # previous
+Set scrYearsLoad = 2;  
+
+Let scrCurrentDate = Today(1);
+Let scrEndYear = Year(scrCurrentDate);
+Let scrStartYear = scrEndYear - scrYearsLoad;
+
+
+Set scrPrefix = '_';
+Set scrLan1Name = 'En';
+Set scrLan2Name = 'Ro';
+Set scrLan3Name = 'Ru';
+
+Set scrCurrency1Name = 'MDL';
+Set scrCurrency2Name = 'USD';
+///$tab 2 Procedures
+// Round to 2 digits
+Set scrRound = Round(Floor($1, 0.001), 0.01);
+
+// Translation procedures
+SUB translationsNewTable(newTableName, existingTableName, keyField)
+// 0 - w/o KEEP
+  FieldNamesTmp:
+  NoConcatenate
+  Load 
+      "Index",
+      [$(scrLan1Name)],
+      [$(scrLan2Name)],
+      [$(scrLan3Name)]
+  Resident FieldNamesTable
+  Where Index Like '$(newTableName)';
+  
+  TRACE $(tableName);
+
+  Let scrLan1FieldName = Peek('$(scrLan1Name)', -1, 'FieldNamesTmp');
+  Let scrLan2FieldName = Peek('$(scrLan2Name)', -1, 'FieldNamesTmp');
+  Let scrLan3FieldName = Peek('$(scrLan3Name)', -1, 'FieldNamesTmp');
+
+  IF existingTableName <> 0 THEN
+    [$(newTableName)]:
+    Left Keep("$(existingTableName)")
+    Load 
+        "Index" as [$(keyField)],
+        [$(scrLan1Name)] as [$(scrLan1FieldName)],
+        [$(scrLan2Name)] as [$(scrLan2FieldName)],
+        [$(scrLan3Name)] as [$(scrLan3FieldName)]
+    Resident InnerDictionaries
+    Where attributeOf Like '$(newTableName)';
+    
+    ELSEIF existingTableName = 0 THEN
+    	[$(newTableName)]:
+    	Load 
+            "Index" as [$(keyField)],
+            [$(scrLan1Name)] as [$(scrLan1FieldName)],
+        	[$(scrLan2Name)] as [$(scrLan2FieldName)],
+            [$(scrLan3Name)] as [$(scrLan3FieldName)]
+    	Resident InnerDictionaries
+    	Where attributeOf Like '$(newTableName)';
+   ENDIF
+
+  drop table FieldNamesTmp;
+ENDSUB
+
+//KPI and Dims translations
+SUB translationsJoinInners(tableName, keyField)
+  JoinTypes:
+  Load Distinct 
+  		Reference as joinType
+  Resident InnerDictionaries
+  Where attributeOf Like '$(tableName)';
+
+  FOR Each scrJoinType in FieldValueList('joinType')
+    Left Join("$(tableName)")
+    Load 
+    	 Index as [$(keyField)],
+         [$(scrLan1Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan1Name)",
+         [$(scrLan2Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan2Name)",
+         [$(scrLan3Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan3Name)"
+    Resident InnerDictionaries
+    Where attributeOf Like '$(tableName)' AND Reference Like '$(scrJoinType)';
+  NEXT
+
+  Drop Table JoinTypes;
+ENDSUB
+///$tab 3 Transactions
+Directory [$(scrTRN_QVD_PATH)];
+
+// Tenders
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Tender$(scrPeriod).qvd')) THEN
+    TenderTemp:
+    LOAD
+        Date,
+        TenderDate,
+        ocid as [Tender ID],
+        IDProcuringEntity,
+        IDTender,
+        TenderStatus,
+        TenderStatusDetails,
+        ProcurementMethod,
+        ProcurementMethodDetails,
+        "Tender period start date",
+        "Tender period end date",
+        "Award criteria"
+//        "Tender id",        
+//         "Tender amount",
+//         "Tender currency",
+//         "Tender title",
+//         "Tender description"   
+//         "Award period start date",
+//         "Award period end date",
+//         "Auction period start date",
+//         "Auction period end date",
+//         "Enquiry period start date",
+//         "Enquiry period end date",
+//         "Contract period start date",
+//         "Contract period end date"
+//         "Tender status details",
+//         "General classification id",
+//         "General classification scheme",
+//         "General classification description",
+//         "General CPV classification",
+//         "Main procurement category",
+//         "Planning budget amount",
+//         "Planning budget currency"
+    FROM Tender$(scrPeriod).qvd (qvd);
+  ENDIF
+NEXT
+// Exclude tenders with planning status
+Tender:
+NoConcatenate
+Load
+	 *,
+     Date(Floor(Alt([Tender period start date], [Tender period end date], TenderDate))) as CurrencyDate,
+     '$(scrProcLinc)'&[Tender ID] as [Link to procedure],
+     if(ProcurementMethod = 'direct', 1, 0) as TenderIsNotCompetitive // Currently no data
+Resident TenderTemp
+Where TenderStatus <> 'planning' AND Date <= '$(scrCurrentDate)';
+
+Drop Table TenderTemp;
+Drop Field TenderDate;
+
+// Lots
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Lot$(scrPeriod).qvd')) THEN
+    Lot_:
+    LOAD
+        IDTender,
+        "Lot id",
+        IDLot,
+        "Lot title",
+        "Lot amount",
+        "Lot currency",
+        "LotStatus"
+//         "Lot description",
+//         "Lot contract period start date",
+//         "Lot contract period end date"
+    FROM Lot$(scrPeriod).qvd (qvd)
+    Where Exists(IDTender);
+  ENDIF
+NEXT
+
+//Exclude bad lots
+ExcludedLots:
+LOAD
+    ExcludedIDLot
+FROM ExcludedLots.qvd (qvd);
+///////////For Dev Only!!!///////////////
+// Load Distinct
+//     F1 as ExcludedIDLot
+// From [lib://MedicalDataFileRep]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=68784252')
+// Where F1 <> 'IDLot'  AND Len(F1) > 0;
+/////////////////////////////////
+
+Lot:
+NoConcatenate
+Load
+	 *
+Resident Lot_
+Where NOT Exists(ExcludedIDLot, [Lot id]);     
+
+Drop Tables Lot_, ExcludedLots;
+
+Left Join (Lot)
+Load
+	 *
+Resident  Tender;  
+
+Drop Table Tender;
+//Drop Field IDTender;
+
+//Auctions
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Auction$(scrPeriod).qvd')) THEN
+    Auction:
+    LOAD Distinct
+    	IDLot
+//         IDTender,
+//         "Auction id",
+//         IDAuction,
+//         "Auction url",
+//         "Auction start date",
+//         "Auction end date"
+    FROM Auction$(scrPeriod).qvd (qvd)
+    Where Exists(IDLot);
+  ENDIF
+NEXT
+
+Left Join (Lot)
+Load
+	 IDLot,
+     1 as AuctionAvailability_
+Resident Auction;
+
+Drop Table Auction;
+
+//Tender Items
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('TenderItem$(scrPeriod).qvd')) THEN
+    TenderItem:
+    LOAD Distinct
+         IDLot,
+         "Tender item CPV classification",
+         "Tender item unit",
+         "Tender item quantity"
+//         IDTender,
+//         "Item id",
+//         IDItem,    
+//         "Tender item description",
+//         "Tender item classification id",
+//         "Tender item classification scheme", // Only 1 scheme CPV
+//         "Tender item classification description",
+//         "Tender item unit id",
+    FROM TenderItem$(scrPeriod).qvd (qvd)
+    Where Exists(IDLot);
+  ENDIF
+NEXT
+
+Left Join (TenderItem)
+Load
+	 *,
+     IDLot as IDLotTmp
+Resident TenderItem; 
+
+Concatenate (TenderItem)
+Load 
+	 IDLot,
+     'Undefined' as [Tender item CPV classification]
+Resident Lot
+Where NOT Exists(IDLotTmp, IDLot);   
+
+Drop Field IDLotTmp;
+
+//Bids
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Bid$(scrPeriod).qvd')) THEN
+    Bid:
+    LOAD 
+        IDLot,
+        IDBid,
+        IDBidder,
+//        BidStatus
+//         IDTender,
+//         "Bid id",
+         "Bid date",
+         "Bid amount",
+         "Bid currency"
+    FROM Bid$(scrPeriod).qvd (qvd)
+    Where Exists(IDLot);
+  ENDIF
+NEXT
+
+Left Join (Bid)
+Load
+	 1 as BAtype
+AutoGenerate 1;     
+
+Left Join (Bid)
+Load
+	 IDBid,
+     Date(Floor([Bid date])) as CurrencyDate
+Resident Bid;     
+
+Drop Field [Bid date];
+
+//For Min Bid Value
+MinBidValue:
+Load
+	 IDLot,
+     LastValue([Bid amount]) as [Bid amount],
+     LastValue(CurrencyDate) as CurrencyDate,
+     LastValue([Bid currency]) as [Bid currency]
+Resident Bid
+Group By IDLot
+Order By [Bid amount] desc;     
+
+Drop Fields [Bid amount], CurrencyDate, [Bid currency] From Bid;
+
+//Awards
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Award$(scrPeriod).qvd')) THEN
+    AwardTemp:
+    LOAD 
+        IDAward,
+        IDLot,
+        IDAwardLot,
+        TenderDate,
+        "Award date",
+        "Award amount",
+        "Award currency",
+        "AwardStatus",
+        IDSupplier as IDBidder,
+        AwardStatusDetails
+//         IDBid,
+//         IDTender,
+//         "Award id"
+    FROM Award$(scrPeriod).qvd (qvd)
+    Where Exists(IDLot);
+  ENDIF
+NEXT
+
+Left Join (Lot)
+Load
+	 IDLot,
+     Max([Award date]) as [Award date]
+Resident AwardTemp
+Group By IDLot;     
+
+Left Join (AwardTemp)
+Load
+	 IDAward,
+     Count(IDLot) as LotQty
+Resident AwardTemp
+Group By IDAward;     
+
+// M Awards : N Lots
+// for 1 Award : N Lots
+Award:
+LOAD 
+	  IDAward,
+      IDAwardLot,
+      Date(Floor(Alt([Award date], TenderDate))) as CurrencyDate,
+      IDLot,
+      "Award date",
+      "Award amount"/LotQty as [Award amount],
+      "Award currency",
+      "AwardStatus",
+      IDBidder,
+      AwardStatusDetails,
+      if(AwardStatus = 'pending' AND AwardStatusDetails = 'active', 1) as PendingActiveFlag,
+      if(AwardStatus = 'pending' AND AwardStatusDetails = 'consideration', 1) as PendingConsiderationFlag_,
+      2 as BAtype
+Resident AwardTemp;
+
+Drop Table AwardTemp;
+
+//Complaints
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Complaint$(scrPeriod).qvd')) THEN
+    Complaint:
+    LOAD 
+          IDTender,
+          IDComplaint,
+          ObjectOfComplaint,
+          Complainer        
+//           "Complaint id",
+//           "Complaint date",
+//           "Complaint status",
+//           "Complaint addressed to",
+//           "Complaint classification id",
+//           "Complaint classification scheme",
+////           "Complaint classification description"
+    FROM Complaint$(scrPeriod).qvd (qvd)
+    Where Exists(IDTender);
+  ENDIF
+NEXT
+
+//Reviews
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Review$(scrPeriod).qvd')) THEN
+    Review:
+    LOAD Distinct
+        IDComplaint,
+        DecisionStatus,
+        SubjectOfDecision
+//         IDTender,  
+//         "Review date",
+//         "Review id",
+//         IDReviewComplaint,
+//         "Review resolution",
+//         "Review classification description",
+//         "Review classification id",
+//         "Review classification scheme"
+    FROM Review$(scrPeriod).qvd (qvd)
+    Where Exists(IDTender);
+  ENDIF
+NEXT
+
+Outer Join (Review)
+Load
+	 IDComplaint
+Resident Complaint;     
+
+
+//Contracts
+// 1 Contract : 1 Award
+// FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+//   IF NOT IsNull(FileSize('Contract$(scrPeriod).qvd')) THEN
+//     Contract:
+//     LOAD 
+//           IDAward,
+//           IDContract,
+//           "ContractStatus"
+// //           "Contract status details",
+// //           "Contract id",
+// //           IDTender
+//     FROM Contract$(scrPeriod).qvd (qvd)
+//     Where Exists(IDAward);
+//   ENDIF
+// NEXT
+
+// Left Join (Award)
+// Load
+// 	 *
+// Resident  Contract;
+
+// Drop Table Contract;
+
+//Award Items
+// FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+//   IF NOT IsNull(FileSize('AwardItem$(scrPeriod).qvd')) THEN
+//     AwardItem:
+//     LOAD Distinct
+//           IDAward,
+//           "Award item CPV classification",
+//           "Award item unit",
+//           "Award item quantity"
+// //           "Award item id",
+// //           IDAwardItem,
+// //           IDLot,
+// //           "Award item description",
+// //           "Award item classification id",
+// //           "Award item classification scheme", // Only 1 scheme CPV
+// //           "Award item classification description",
+// //           "Award item unit id",
+// //           IDTender
+//     FROM AwardItem$(scrPeriod).qvd (qvd)
+//     Where Exists(IDAward);
+//   ENDIF
+// NEXT
+
+
+
+
+ 
+///$tab 4 Dictionaries
+Directory [$(scrDIC_QVD_PATH)];
+
+RegionMap:
+Mapping
+LOAD
+    FromRegion,
+    ToRegion
+FROM RegionMap.qvd (qvd);
+
+Map [Procuring entity region], [Bidder region] using RegionMap;
+
+//Buyers
+ProcuringEntity:
+LOAD
+    IDProcuringEntity,
+    "Procuring entity name",
+    "Procuring entity",
+    "Procuring entity id",
+    "Procuring entity postal code",
+    "Procuring entity street address",
+    "Procuring entity region",
+    "Procuring entity country",
+    "Procuring entity contact point email"
+//    "Procuring entity contact point name",
+//    "Procuring entity contact point telephone"
+//    "Procuring entity legal name",
+//    "Procuring entity country id",
+//    "Procuring entity region id"
+FROM ProcuringEntity.qvd (qvd)
+Where Exists(IDProcuringEntity);
+
+//Procuring Entity Hierarchy
+HierarchyProcuringEntity:
+Load
+	 *,
+     IDProcuringEntity as IDProcuringEntity_
+;
+LOAD
+    IDProcuringEntity,
+//    "Procuring entity",
+//    "Procuring entity short name",
+//    IDSecondaryAgency,
+    "Secondary agency",
+//    "Secondary agency name",
+//    IDHeadAgency,
+    "Head agency",
+//    "Head agency name",
+    "Scope of the contracting authority",
+    "Legal form of the contracting authority"
+FROM HierarchyProcuringEntity.qvd (qvd)
+Where Exists(IDProcuringEntity);
+
+Concatenate (HierarchyProcuringEntity)
+LOAD
+	 IDProcuringEntity,
+	 [Procuring entity] as [Secondary agency],
+	 [Procuring entity] as [Head agency],
+     'Undefined' as [Scope of the contracting authority],
+     'Undefined' as [Legal form of the contracting authority]
+Resident ProcuringEntity
+Where NOT Exists(IDProcuringEntity_, IDProcuringEntity);	
+
+DROP Field IDProcuringEntity_; 
+
+//Bidders
+Bidder:
+LOAD
+    IDBidder,
+    "Bidder name",
+    Bidder,
+    "Bidder id",
+    "Bidder postal code",
+    "Bidder street address",
+    "Bidder region",
+    "Bidder country",
+    "Bidder contact point email"
+//    "Bidder contact point name",
+//    "Bidder contact point telephone",
+//     "Bidder country id",
+//     "Bidder region id",
+//     "Bidder legal name"
+FROM Bidder.qvd (qvd)
+Where Exists(IDBidder);
+
+Left Join (Bidder)
+Load
+	 [Bidder id],
+     '$(scrOpenMoney)'&[Bidder id] as [Link to OpenMoney]
+Resident Bidder;     
+
+Directory [$(scrLOCAL_DATA_PATH)];
+
+ProcuringEntityArea:
+// LOAD
+//     MDA_adm1.Name as [Procuring entity region],
+//     MDA_adm1.Area as [Procuring entity area]
+// FROM MDA_adm1.kml
+// (kml, Table is [Moldova divisions. Level 1]);
+LOAD
+    [Procuring entity region],
+    [Procuring entity area]
+FROM MDA_adm1.qvd (qvd);
+
+
+///$tab 5 Currency
+// Currency exchange on the tender date
+Directory [$(scrTRN_QVD_PATH)];
+
+DistDates:
+Load 
+	 Num(Fieldvalue('CurrencyDate',RecNo())) as CEdate
+AutoGenerate FieldValueCount('CurrencyDate'); 
+
+MinMaxDates:
+Load 
+	Min(CEdate) as MinDate,
+	Max(CEdate) as MaxDate
+Resident DistDates;
+
+Drop Table DistDates;
+
+Let scrMinDate = Date(Peek('MinDate', -1, 'MinMaxDates'));
+Let scrMaxDate = Date(Peek('MaxDate', -1, 'MinMaxDates'));
+
+Drop Table MinMaxDates;
+
+CalendarTmp:
+Load Date('$(scrMinDate)' + RecNo() - 1) as CEdate
+AutoGenerate scrMaxDate - scrMinDate + 1;
+
+Currency:
+Load
+    CEdate,
+    Currency,
+    Rate
+From Currency????.qvd (qvd);
+
+// Rate to end of period
+CurrencyTmp:
+Load
+	 Currency, 
+	 Max(CEdate) as MaxDate 
+Resident Currency 
+Group By Currency;
+
+Left Join (CurrencyTmp)
+Load
+	 Currency, 
+	 CEdate as MaxDate, 
+	 Rate 
+Resident Currency;
+
+Left Join (CurrencyTmp)
+Load CEdate
+Resident CalendarTmp;
+
+Drop Table CalendarTmp;
+
+Concatenate (Currency)
+Load 
+	 Currency, 
+	 Rate,
+	 CEdate
+Resident CurrencyTmp
+Where CEdate > MaxDate;
+
+Drop Table CurrencyTmp; 
+
+FOR Each scrCurrency in FieldValueList('Currency') 	
+	Left Join (Lot)
+	LOAD 
+	 	CEdate as CurrencyDate,
+	 	Rate as $(scrCurrency)
+	Resident Currency
+	Where Currency='$(scrCurrency)';	
+    
+    Left Join (Award)
+	LOAD 
+	 	CEdate as CurrencyDate,
+	 	Rate as $(scrCurrency)
+	Resident Currency
+	Where Currency='$(scrCurrency)';     
+    
+    Left Join (MinBidValue)
+	LOAD 
+	 	CEdate as CurrencyDate,
+	 	Rate as $(scrCurrency)
+	Resident Currency
+	Where Currency='$(scrCurrency)';
+NEXT
+
+Drop Field CurrencyDate;
+
+Left Join (Lot)
+Load
+	 IDLot,
+     Pick(Match([Lot currency], 'MDL', 'USD', 'EUR'), [Lot amount], $(scrRound([Lot amount]*MDLUSD)), $(scrRound([Lot amount]/EURMDL))) as [Lot amountMDL],
+     Pick(Match([Lot currency], 'USD', 'MDL', 'EUR'), [Lot amount], $(scrRound([Lot amount]/MDLUSD)), $(scrRound([Lot amount]/EURUSD))) as [Lot amountUSD]
+Resident Lot;  
+
+Drop Fields MDLUSD, EURMDL, EURUSD, [Lot amount], [Lot currency] From Lot;
+
+Left Join (Award)
+Load
+	 IDAwardLot,
+     Pick(Match([Award currency], 'MDL', 'USD', 'EUR'), [Award amount], $(scrRound([Award amount]*MDLUSD)), $(scrRound([Award amount]/EURMDL))) as [Award amountMDL],
+     Pick(Match([Award currency], 'USD', 'MDL', 'EUR'), [Award amount], $(scrRound([Award amount]/MDLUSD)), $(scrRound([Award amount]/EURUSD))) as [Award amountUSD]
+Resident Award; 
+
+Drop Fields MDLUSD, EURMDL, EURUSD, [Award currency] From Award;
+
+Left Join (Lot)
+Load
+	 IDLot,
+     Pick(Match([Bid currency], 'MDL', 'USD', 'EUR'), [Bid amount], $(scrRound([Bid amount]*MDLUSD)), $(scrRound([Bid amount]/EURMDL))) as [Min bid amountMDL],
+     Pick(Match([Bid currency], 'USD', 'MDL', 'EUR'), [Bid amount], $(scrRound([Bid amount]/MDLUSD)), $(scrRound([Bid amount]/EURUSD))) as [Min bid amountUSD]
+Resident MinBidValue; 
+
+Drop Table MinBidValue;
+
+Drop Table Currency;
+
+CurrencyLabel:
+Load * Inline [
+_Currency, _CurrencyIndex
+$(scrCurrency1Name), 1
+$(scrCurrency2Name), 2
+];
+
+///$tab 6 KPIs
+//No. of tenderers
+Left Join (Lot)
+Load
+	 IDLot,
+     Count(IDBidder) as [Number of bidders_]
+Resident Bid
+Group By IDLot;     
+
+//No. of disqualifications
+Left Join (Lot)
+Load
+	 IDLot,
+	 Count(DISTINCT IDAward) as [Number of disqualifications_]
+Resident Award
+Where AwardStatus = 'pending' AND AwardStatusDetails = 'unsuccessful'
+Group By IDLot;     
+
+
+//Days from tender close to award decision, Length of tender period
+//Days between award date and tender start date
+Left Join (Lot)
+Load
+	 IDLot,
+	 Alt([Number of bidders_], 0) as [Number of bidders],
+     Alt([Number of disqualifications_], 0) as [Number of disqualifications],
+     Alt(AuctionAvailability_, 0) as AuctionAvailability,
+     Floor([Award date] - [Tender period end date]) as [Days from tender close to award decision],
+     Floor([Tender period end date] - [Tender period start date]) as [Length of tender period],
+     Floor([Award date] - [Tender period start date]) as [Days between award date and tender start date]
+Resident Lot; 
+
+Drop Fields [Number of bidders_], [Number of disqualifications_], AuctionAvailability_, [Award date], [Tender period start date], [Tender period end date]; 
+
+//Number of disqualifications per buyer
+Left Join (ProcuringEntity)
+Load
+	 IDProcuringEntity,
+     Sum([Number of disqualifications]) as [Number of disqualifications per buyer_]
+Resident Lot
+Group By IDProcuringEntity;   
+
+Left Join (ProcuringEntity)
+Load
+	 IDProcuringEntity,
+     Alt([Number of disqualifications per buyer_], 0) as [Number of disqualifications per buyer]
+Resident ProcuringEntity;
+
+Drop Field [Number of disqualifications per buyer_];
+
+//Number of disqualifications per bidder
+Left Join (Bidder)
+Load
+	 IDBidder,
+     Count(DISTINCT IDAward) as [Number of disqualifications per bidder_]
+Resident Award
+Where AwardStatus = 'pending' AND AwardStatusDetails = 'unsuccessful'
+Group By IDBidder;     
+ 
+Left Join (Bidder)
+Load
+	 IDBidder,
+     Alt([Number of disqualifications per bidder_], 0) as [Number of disqualifications per bidder]
+Resident Bidder;
+
+Drop Field [Number of disqualifications per bidder_];
+
+//Define awarded value
+Left Join (Award)
+Load
+	 IDLot,
+     [Award criteria],
+     1 as ActiveLotFlag
+Resident Lot
+Where LotStatus = 'active';    
+
+Left Join (Award)
+Load
+	 IDLot,
+     FirstValue(IDAward) as IDAward,
+     1 as PendingConsiderationFlag
+Resident Award
+Where ActiveLotFlag = 1 AND [Award criteria] <> 'priceOnly' AND PendingConsiderationFlag_ = 1
+Group By IDLot
+Order By [Award amount];  
+
+Drop Fields [Award amount], ActiveLotFlag;
+
+Left Join (Award)
+Load
+	 IDAwardLot,
+     if(PendingActiveFlag = 1, 1,
+     	if(PendingConsiderationFlag_ = 1 AND [Award criteria] = 'priceOnly', 1,
+        	if(PendingConsiderationFlag = 1  AND [Award criteria] <> 'priceOnly', 1
+            )
+        )
+     ) as AwardedFlag
+Resident Award;     
+
+Drop Fields [Award criteria], IDAwardLot, PendingActiveFlag, PendingConsiderationFlag_, PendingConsiderationFlag; 
+
+//Mark bidder as supplier
+//https://docs.google.com/document/d/1d3QlBfduJ9-UHHx_fmk6sfO0AS-SquUQ0bQeayjMpfQ
+Left Join (Bidder)
+Load Distinct
+	 IDBidder,
+     1 as IsSupplier
+Resident Award
+Where AwardedFlag = 1;
+
+//Award amount in lot items
+Left Join (TenderItem)
+Load	
+	 IDLot,
+     Sum([Award amountMDL]) as AwardItemAmountMDL,
+     Sum([Award amountUSD]) as AwardItemAmountUSD
+Resident Award
+Where AwardedFlag = 1
+Group By IDLot; 
+
+//Pass supplier from award to lot 
+//https://docs.google.com/document/d/1d3QlBfduJ9-UHHx_fmk6sfO0AS-SquUQ0bQeayjMpfQ
+Suppliers:
+Load Distinct
+	 IDLot,
+     IDBidder
+Resident Award
+Where AwardedFlag = 1;   
+
+Left Join (Suppliers)
+Load
+	 IDBidder,
+     Bidder as Supplier
+Resident  Bidder;    
+
+Left Join (Lot)
+Load
+	 IDLot,
+     Concat(DISTINCT Supplier, '; ') as Supplier
+Resident Suppliers
+Group By IDLot;
+
+Drop Table Suppliers;
+
+
+//Non coppetitive bidders and buyers
+Left Join (Bid)
+Load
+	 IDLot,
+     if(TenderIsNotCompetitive = 1, 1, 0) as IsNotCompetitive
+Resident Lot;     
+
+Left Join (Bidder)
+Load 
+	 IDBidder,
+	 if(Concat(DISTINCT IsNotCompetitive)='1', 1, 0) as BidderNonCompetitive
+Resident Bid
+Group by IDBidder;
+
+Drop Field IsNotCompetitive;
+
+Left Join (ProcuringEntity)
+Load 
+	 IDProcuringEntity,
+	 if(Concat(DISTINCT TenderIsNotCompetitive)='1', 1, 0) as ProcuringEntityNonCompetitive
+Resident Lot
+Group by IDProcuringEntity;
+
+Drop Field TenderIsNotCompetitive;
+
+//For  price variation of same item across all lots
+ItemQty:
+Load
+	 IDLot,
+     Count(DISTINCT [Tender item CPV classification]&[Tender item unit]&[Tender item quantity]) as ItemQty
+Resident  TenderItem
+Where [Tender item CPV classification] <> 'Undefined'
+Group By IDLot;    
+
+Left Join (TenderItem)
+Load 
+	 IDLot,
+	 1 as SingleItemFlag
+Resident  ItemQty
+Where ItemQty = 1;
+
+Drop Table ItemQty;
+
+Left Join (TenderItem)
+Load 
+	 IDLot,
+     [Tender item unit],
+     [Tender item quantity],
+     $(scrRound(AwardItemAmountMDL/[Tender item quantity])) as [Unit priceMDL],
+     $(scrRound(AwardItemAmountUSD/[Tender item quantity])) as [Unit priceUSD]
+Resident  TenderItem
+Where SingleItemFlag = 1;
+
+Drop Fields AwardItemAmountMDL, AwardItemAmountUSD;
+
+
+AggrComplaint:
+Load
+	 IDTender,
+     IDTender as IDTenderIs,
+     [Number of complaints]
+;     
+Load
+	 IDTender,
+     Count(IDComplaint) as [Number of complaints]
+Resident Complaint
+Group By IDTender;
+
+Left Join (Lot)
+Load
+	 IDTender,
+     1 as IsComplaint
+Resident  AggrComplaint; 
+
+Concatenate (AggrComplaint)
+Load Distinct
+	 IDTender,
+     0 as [Number of complaints]
+Resident Lot
+Where NOT Exists(IDTenderIs, IDTender);
+
+Left Join (Lot)
+Load
+	 IDTender,
+     [Number of complaints]
+Resident AggrComplaint;
+
+Drop Table AggrComplaint;
+
+Left Join (Complaint)
+Load
+      IDComplaint,
+      if(IsNull(DecisionStatus), 'Nedefinit', DecisionStatus) as DecisionStatus,
+      if(IsNull(SubjectOfDecision), 'Nedefinit', SubjectOfDecision) as SubjectOfDecision
+Resident Review;  
+
+Drop Table Review;
+
+
+Concatenate (Bid)
+Load
+	 *
+Resident Award;   
+
+Drop Table Award; 
+
+Autonumber IDLot, IDBid, IDAward, IDTender, IDComplaint;
+///$tab 7 Multilang
+Directory [$(scrDIC_QVD_PATH)];
+
+//Field names for multilingual dictionaries
+FieldNamesTable:
+NoConcatenate
+LOAD
+    "Index",
+    En,
+    Ro,
+    Ru
+FROM MultilangFieldNames.qvd (qvd);
+///////////For Dev Only!!!///////////////
+// Load
+//     F1 as Index,
+//     F3 as En,
+//     F4 as Ro,
+//     F5 as Ru
+// FROM [lib://MedicalDataFileRep]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=44525009')
+// Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+//Names and labels for internal KPIs and dimensions
+InnerDictionaries:
+Load
+    "Index",
+    Reference,
+    En,
+    Ro,
+    Ru,
+    attributeOf
+From MultilangDictionaries.qvd (qvd);
+///////////For Dev Only!!!///////////////
+// Load
+//     F1 as Index,
+//     F2 as Reference,
+//     F3 as En,
+//     F4 as Ro,
+//     F5 as Ru,
+//     F6 as attributeOf
+// From [lib://MedicalDataFileRep]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=420840489')
+// Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+//Label translations
+Set Verbatim = 1;
+
+Translations:
+NoConcatenate
+Load     
+	"Index",
+    En,
+    Ro,
+    Ru
+From MultilangLabels.qvd (qvd);
+///////////For Dev Only!!!///////////////
+// Load
+//     F1 as "Index",
+//     F3 as En,
+//     F4 as Ro
+// FROM [lib://MedicalDataFileRep]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=1269059715')
+// Where F1 <> 'Index' AND Len(F1) > 0;
+// Load
+//     "Index",
+//     En,
+//     Ro,
+//     Ru
+// FROM [lib://MedicalDataFileRep]
+// (ooxml, embedded labels, table is MLLabels, 
+// url is 'https://docs.google.com/spreadsheets/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/export?format=xlsx')
+// Where Len(Index) > 0;
+//////////////////////////
+
+Language:
+CROSSTABLE (Language, Translation) LOAD 
+	 Index, 
+     Ro,
+     En,
+     Ru
+Resident Translations;
+
+LanguageList:
+Load Distinct
+	 Language as _Language
+Resident Language
+Where Language > 0;
+
+Left Join(LanguageList)
+Load
+    Index as [_Language],
+    Ro as [_Index]
+Resident InnerDictionaries
+Where attributeOf like 'LanguageList';
+
+DROP TABLE Translations;
+
+// Variables for UI localizing
+Let T = replace('_T_$1_@(=FirstSortedValue(distinct _Language, _Index))', '@', '$');
+
+LET scrTranslationsRows = NoOfRows('Language');
+
+FOR i = 0 to scrTranslationsRows - 1 
+	Let _scrTranslationId = Peek('Index', i, 'Language');
+	Let _scrTranslation = Peek('Translation', i, 'Language');
+	Let _scrTrLanguage = Peek('Language', i, 'Language');
+	
+	Let _scrTrName = '_T_$(_scrTranslationId)_$(_scrTrLanguage)';
+	Let $(_scrTrName) = '$(_scrTranslation)';
+	
+	Let _scrTranslationId =;
+	Let _scrTranslation =;
+	Let _scrTrLanguage =;
+	Let _scrTrName =;
+NEXT
+
+Drop Table Language;
+
+// Currency selection
+Let scrCurrency = replace('@(=FirstSortedValue(_Currency, _CurrencyIndex))', '@', '$');
+
+//Sheet and object descriptions 
+HelpTranslation:
+NoConcatenate
+Load     
+	"Index",
+    En,
+    Ro,
+    Ru
+From MultilangHelp.qvd (qvd);
+///////////For Dev Only!!!///////////////
+// Load
+//     "Index",
+//     En,
+//     Ro,
+//     Ru
+// FROM [lib://MedicalDataFileRep]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=698193441')
+// Where  Len("Index") > 0;
+//////////////////////////
+
+LanguageHelp:
+CROSSTABLE (Language, Translation) 
+LOAD 
+	 Index, 
+     En,
+     Ro,
+     Ru
+Resident HelpTranslation;
+
+// Переменные для локализации хэлпов
+LET H = replace('_H_$1_@(=FirstSortedValue(_Language, _Index))', '@', '$');
+
+LET scrTranslationsRows = NoOfRows('LanguageHelp');
+
+FOR i = 0 TO scrTranslationsRows - 1 
+	Let _scrTranslationId = Peek('Index', i, 'LanguageHelp');
+	Let _scrTranslation = Peek('Translation', i, 'LanguageHelp');
+	Let _scrTrLanguage = Peek('Language', i, 'LanguageHelp');
+	
+	Let _scrTrName = '_H_$(_scrTranslationId)_$(_scrTrLanguage)';
+	Let $(_scrTrName) = '$(_scrTranslation)';
+	
+	Let _scrTranslationId =;
+	Let _scrTranslation =;
+	Let _scrTrLanguage =;
+	Let _scrTrName =;
+NEXT
+
+DROP Tables LanguageHelp, HelpTranslation;
+///$tab 8 Calendar
+MinMaxDates:
+Load 
+	Min(TenderDateTmp) as MinDate,
+	Max(TenderDateTmp) as MaxDate;	
+
+Load Num(Fieldvalue('Date',RecNo())) as TenderDateTmp 
+AutoGenerate FieldValueCount('Date'); 
+
+Let scrMinDate = Date(Peek('MinDate', -1, 'MinMaxDates'));
+Let scrMaxDate = Date(Peek('MaxDate', -1, 'MinMaxDates'));
+
+Drop Table MinMaxDates;
+
+Set MonthNames='$(_T_33_En)';
+
+Calendar:
+Load
+	 Date,
+     Date as [Calendar date],
+     Dual(Year(Date)&'-'&Month(Date), (Year(Date)-1) * 12 + Month(Date)) as [$(_T_34_En)],
+     Year(Date) as [$(_T_145_En)],
+     Month(Date) as [$(_T_35_En)],
+     Dual(Year(Date)&'-'&'$(_T_143_En)' & Ceil(Month(Date)/3), Year(Date) & Num(Ceil(Month(Date)/3), '00')) as [$(_T_144_En)]
+;
+Load Date('$(scrMinDate)' + RecNo() - 1) as Date
+AutoGenerate scrMaxDate - scrMinDate + 1;    
+
+Set MonthNames='$(_T_33_Ro)';
+
+Left Join (Calendar)
+Load
+	 Date,
+     Dual(Year(Date)&'-'&Month(Date), (Year(Date)-1) * 12 + Month(Date)) as [$(_T_34_Ro)],
+     Year(Date) as [$(_T_145_Ro)],
+     Month(Date) as [$(_T_35_Ro)],
+     Dual(Year(Date)&'-'&'$(_T_143_Ro)' & Ceil(Month(Date)/3), Year(Date) & Num(Ceil(Month(Date)/3), '00')) as [$(_T_144_Ro)]
+Resident Calendar;     
+
+Set MonthNames='$(_T_33_Ru)';
+
+Left Join (Calendar)
+Load
+	 Date,
+     Dual(Year(Date)&'-'&Month(Date), (Year(Date)-1) * 12 + Month(Date)) as [$(_T_34_Ru)],
+     Year(Date) as [$(_T_145_Ru)],
+     Month(Date) as [$(_T_35_Ru)],
+     Dual(Year(Date)&'-'&'$(_T_143_Ru)' & Ceil(Month(Date)/3), Year(Date) & Num(Ceil(Month(Date)/3), '00')) as [$(_T_144_Ru)]
+Resident Calendar;  
+///$tab 9 Variables
+//Fields
+//Lot
+Set fldOCID = '[Tender ID]';
+Set fldLotId = '[Lot id]';
+Set fldLotTitle = '[Lot title]';
+Set fldNoOfBidderPerLot = '[Number of bidders]';
+Set fldProcurementMethod = 'ProcurementMethod';
+Set fldLotAmount = =replace('[Lot amount@(scrCurrency)]', '@', '$');
+Set fldLotStatus = 'LotStatus';
+Set fldTenderStatus = 'TenderStatus';
+Set fldTenderStatusDetails = 'TenderStatusDetails';
+Set fldNoOfComplaints = '[Number of complaints]';
+Set fldIsComplaint = 'IsComplaint';
+Set fldTenderCloseAward = '[Days from tender close to award decision]';
+Set fldLengthOfTenderPeriod = '[Length of tender period]';
+Set fldAwardTenderStart = '[Days between award date and tender start date]';
+Set fldNoOfDisqual = '[Number of disqualifications]';
+Set fldMinBidAmount = =replace('[Min bid amount@(scrCurrency)]', '@', '$');
+
+//Procuring Entity
+Set fldProuringEntityId = '[Procuring entity id]';
+Set fldProuringEntity = '[Procuring entity]';
+Set fldProuringEntityName = '[Procuring entity name]';
+Set fldProuringEntityRegion = '[Procuring entity region]';
+Set fldProuringEntityAddress = '[Procuring entity street address]';
+Set fldProuringEntityCountry = '[Procuring entity country]';
+Set fldNoOfDisqualPerBuyer = '[Number of disqualifications per buyer]';
+Set fldHeadAgency = '[Head agency]';
+Set fldSecondaryAgency = '[Secondary agency]';
+Set fldCAScope = '[Scope of the contracting authority]';
+Set fldCALegalForm = '[Legal form of the contracting authority]';
+
+//Bid
+Set fldBidId = 'IDBid';
+
+//Bidder
+Set fldBidderId = '[Bidder id]';
+Set fldBidder = 'Bidder';
+Set fldBidderName = '[Bidder name]';
+Set fldBidderRegion = '[Bidder region]';
+Set fldBidderAddress = '[Bidder street address]';
+Set fldBidderCountry = '[Bidder country]';
+Set fldIsSupplier = 'IsSupplier';
+Set fldNoOfDisqualPerBidder = '[Number of disqualifications per bidder]';
+
+//Supplier
+Set fldSupplier = 'Supplier';
+
+//CPV classification
+Set fldCPVclassification = '[Tender item CPV classification]';
+
+//Tender item
+Set fldTenderItemUnit = '[Tender item unit]';
+Set fldTenderItemQty = '[Tender item quantity]';
+Set fldIsSingleItem = 'SingleItemFlag';
+Set fldUnitPrice = =replace('[Unit price@(scrCurrency)]', '@', '$');
+
+//Award
+Set fldAwardId = 'IDAward';
+Set fldAwardStatus = 'AwardStatus';
+Set fldAwardStatusDetails = 'AwardStatusDetails';
+Set fldAwardAmount = =replace('[Award amount@(scrCurrency)]', '@', '$');
+Set fldAwardedFlag = 'AwardedFlag';
+// Bids or Awards
+Set fldBidAwardType = 'BAtype';
+
+//Complaint
+Set fldComplaintId = 'IDComplaint';
+Set fldComplainer = 'Complainer';
+
+//Current language
+Let expLan = Replace('@(=_Language)', '@', '$');
+
+//Set Analysis
+Set scrPARAMS = (=replace('$1', ';', ',')); 
+
+Set saOpenPM = '$(fldProcurementMethod)={open}';
+Set saLimitedPM = '$(fldProcurementMethod)={direct}'; // Currently no data
+Set saIsBid = '$(fldBidAwardType)={1}';
+Set saIsAward = '$(fldBidAwardType)={2}';
+Set saExclCancUnsucAward = '$(fldAwardStatus)-={unsuccessful;cancelled}';
+Set saActiveAward = '$(fldAwardStatus)={active}';
+Set saPendingAward = '$(fldAwardStatus)={pending}';
+Set saActiveDetailsAward = '$(fldAwardStatusDetails)={active}';
+Set saAwarded = '$(fldAwardedFlag)={1}';
+Set saUnsuccessfulDetailsAward = '$(fldAwardStatusDetails)={unsuccessful}';
+Set saIsSupplier = '$(fldIsSupplier)={1}';
+Set saIsSingleBid = '$(fldNoOfBidderPerLot)={1}';
+Set saCancTender = '$(fldTenderStatus)={cancelled}';
+Set saIsSingleItem = '$(fldIsSingleItem)={1}';
+Set saIsComplaint = '$(fldIsComplaint)={1}';
+
+//KPIs
+Set scrNO_OF_PROCEDURES_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldOCID)'&')';
+Let expNoOfProcedures = $(scrNO_OF_PROCEDURES_);
+
+Set scrNO_OF_LOTS_ = 'COUNT({<$'&scrPARAMS&'>} $(fldLotId)'&')';
+Let expNoOfLots = $(scrNO_OF_LOTS_);
+
+Set scrNO_OF_PROC_ENTITIES_ = 'COUNT({<$'&scrPARAMS&'>} $(fldProuringEntityId)'&')';
+Let expNoOfProcEntities = $(scrNO_OF_PROC_ENTITIES_);
+
+Set scrMEAN_NO_OF_BIDDERS_PER_LOT_ = 'AVG({<$'&scrPARAMS&',$(saOpenPM)>} $(fldNoOfBidderPerLot)'&')';
+Let expMeanNoOfBiddersPerLot = $(scrMEAN_NO_OF_BIDDERS_PER_LOT_);
+
+Set scrMEDIAN_NO_OF_BIDDERS_PER_LOT_ = 'MEDIAN({<$'&scrPARAMS&',$(saOpenPM)>} $(fldNoOfBidderPerLot)'&')';
+Let expMedianNoOfBiddersPerLot = $(scrMEDIAN_NO_OF_BIDDERS_PER_LOT_);
+
+Set scrNO_OF_SUPPLIERS_ = 'COUNT({<$'&scrPARAMS&',$(saIsAward),$(saAwarded)>} $(fldBidderId)'&')';
+Let expNoOfSuppliers = $(scrNO_OF_SUPPLIERS_);
+
+Set scrNO_OF_BIDDERS_ = 'COUNT({<$'&scrPARAMS&',$(saIsBid)>} $(fldBidderId)'&')';
+Let expNoOfBidders = $(scrNO_OF_BIDDERS_);
+
+Set scrAWARDED_VALUE_ = 'SUM({<$'&scrPARAMS&'>} $'&'($(fldAwardAmount)'&'))';
+Let expAwardedValue = $(scrAWARDED_VALUE_);
+
+Set scrAWARDED_VALUE_TOTAL_ = 'SUM({<$'&scrPARAMS&'>} Total $'&'($(fldAwardAmount)'&'))';
+Let expAwardedValueTotal = $(scrAWARDED_VALUE_TOTAL_);
+
+Set scrEXPECTED_VALUE_ = 'SUM({<$'&scrPARAMS&'>} $'&'($(fldLotAmount)'&'))';
+Let expExpectedValue = $(scrEXPECTED_VALUE_);
+
+Set scrLOT_UNIT_PRICE_ = 'SUM({<$'&scrPARAMS&'>} $'&'($(fldUnitPrice)'&'))';
+Let expLotUnitPrice = $(scrLOT_UNIT_PRICE_);
+
+// Set scrNO_OF_CONTRACTS_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldContractId)'&')';
+// Let expNoOfContracts = $(scrNO_OF_CONTRACTS_);
+
+Set scrNO_OF_AWARDS_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldAwardId)'&')';
+Let expNoOfAwards = $(scrNO_OF_AWARDS_);
+
+Set scrNO_OF_BIDS_ = 'COUNT({<$'&scrPARAMS&'>} $(fldBidId)'&')';
+Let expNoOfBids = $(scrNO_OF_BIDS_);
+
+Set scrNO_OF_ITEMS_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldCPVclassification)'&')';
+Let expNoOfItems = $(scrNO_OF_ITEMS_);
+
+Set scrTENDER_CLOSE_AWARD_ = 'AVG({<$'&scrPARAMS&'>} $(fldTenderCloseAward)'&')';
+Let expTenderCloseAward = $(scrTENDER_CLOSE_AWARD_);
+
+Set scrLENGTH_OF_TENDER_PERIOD_ = 'AVG({<$'&scrPARAMS&'>} $(fldLengthOfTenderPeriod)'&')';
+Let expLengthOfTenderPeriod = $(scrLENGTH_OF_TENDER_PERIOD_);
+
+Set scrAWARD_TENDER_START_ = 'AVG({<$'&scrPARAMS&'>} $(fldAwardTenderStart)'&')';
+Let expAwardTenderStart = $(scrAWARD_TENDER_START_);
+
+Set scrAVG_UNIT_PRICE_ = 'AVG({<$'&scrPARAMS&'>} $'&'($(fldUnitPrice)'&'))';
+Let expAvgUnitPrice = $(scrAVG_UNIT_PRICE_);
+
+Set scrMEDIAN_UNIT_PRICE_ = 'MEDIAN({<$'&scrPARAMS&'>} $'&'($(fldUnitPrice)'&'))';
+Let expMedianUnitPrice = $(scrMEDIAN_UNIT_PRICE_);
+
+Set scrMIN_UNIT_PRICE_ = 'MIN({<$'&scrPARAMS&'>} $'&'($(fldUnitPrice)'&'))';
+Let expMinUnitPrice = $(scrMIN_UNIT_PRICE_);
+
+Set scrMAX_UNIT_PRICE_ = 'MAX({<$'&scrPARAMS&'>} $'&'($(fldUnitPrice)'&'))';
+Let expMaxUnitPrice = $(scrMAX_UNIT_PRICE_);
+
+Set scrNO_OF_COMPLAINTS_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldComplaintId)'&')';
+Let expNoOfComplaints = $(scrNO_OF_COMPLAINTS_);
+
+Set scrNO_OF_COMPLAINERS_ = 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldComplainer)'&')';
+Let expNoOfComplainers = $(scrNO_OF_COMPLAINERS_);
+///$tab 10 Interface add tables
+//KPI Tables
+
+KPIList:
+Load
+	 _KPINo, 
+     replace(_Exp, '@', '$') as _Exp,
+     replace(_ExpComplaint, '@', '$') as _ExpComplaint
+;
+Load * Inline [
+_KPINo, 	_Exp,															_ExpComplaint
+1,			@(expNoOfProcedures),											@(expNoOfProcedures($(saIsComplaint)))
+2,			@(expExpectedValue),											@(expExpectedValue($(saIsComplaint)))
+3,			@(expNoOfAwards($(saAwarded))),									@(expNoOfAwards($(saAwarded);$(saIsComplaint)))
+4,			@(expAwardedValue($(saAwarded))),								@(expAwardedValue($(saAwarded);$(saIsComplaint)))
+];
+
+CALL translationsNewTable('ProcurementMethod', 'Lot', 'ProcurementMethod');
+CALL translationsNewTable('ProcurementMethodDetails', 'Lot', 'ProcurementMethodDetails');
+CALL translationsNewTable('Threshold', 'Lot', 'ProcurementMethodDetails');
+CALL translationsNewTable('TenderStatus', 'Lot', 'TenderStatus');
+CALL translationsNewTable('TenderStatusDetails', 'Lot', 'TenderStatusDetails');
+CALL translationsNewTable('LotStatus', 'Lot', 'LotStatus');
+CALL translationsNewTable('ObjectOfComplaint', 'Complaint', 'ObjectOfComplaint');
+CALL translationsNewTable('DecisionStatus', 'Complaint', 'DecisionStatus');
+CALL translationsNewTable('SubjectOfDecision', 'Complaint', 'SubjectOfDecision');
+CALL translationsNewTable('NonCompetitiveSupplier', 0, 'BidderNonCompetitive');
+CALL translationsNewTable('NonCompetitiveProcuringEntity', 0, 'ProcuringEntityNonCompetitive');
+CALL translationsNewTable('AuctionAvailability', 'Lot', 'AuctionAvailability');
+
+CALL translationsJoinInners('KPIList', '_KPINo');
+
+Drop Tables FieldNamesTable, InnerDictionaries;
+
+
+
+Set scrSize = Alt(Div(Log10(Fabs($1)),3), 0);
+Let fmtNumConvert = Replace('Dual(Pick($(scrSize($1))+1, NUM(RangeSum($1,Left($2,2)), ''#,##0''), NUM($1/1000, ''#,##0.00@(=@(T(10)))'', ''.'', '',''), 
+NUM($1/1000000, ''#,##0.00@(=@(T(11)))'', ''.'', '',''), NUM($1/1000000000, ''#,##0.00@(=@(T(12)))'', ''.'', '',''), 
+NUM($1/1000000000000, ''#,##0.00@(=@(T(13)))'', ''.'', '','')),$1)', '@', '$');
+
+
+
+
+///$tab 11 For Benchmarking
+$(Must_Include=lib://OCDSint/Benchmarking/UpdateSection/Moldova.txt); 
+///$tab Exit Script
+Exit Script;

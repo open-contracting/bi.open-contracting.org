@@ -1,0 +1,1439 @@
+///$tab Main
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;-$#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET CreateSearchIndexOnReload=0;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+SET HidePrefix = '_';
+///$tab 01. Parameters
+// Paths to local Data //dev
+Set scrDIC_QVD_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/01_Dictionary/';
+Set scrTRN_QVD_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/02_Transaction/';
+Set scrLOCAL_DATA_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/03_LocalData/';
+Set scrLOCAL_FILES_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/02_LocalFiles/';
+
+// Paths to local Data //test
+Set scrDIC_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/01_Dictionary/';
+Set scrTRN_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/02_Transaction/';
+Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/03_LocalData/';
+Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Afghanistan/02_LocalFiles/';
+
+// Paths to local Data //prod
+Set scrDIC_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/01_Dictionary/';
+Set scrTRN_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/02_Transaction/';
+Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/03_LocalData/';
+Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Afghanistan/02_LocalFiles/';
+
+//Web Connection Name //dev
+
+SET scrURLConnectionName = 'lib://karandin_test_CDB3_timberSpecies (rbcgrp_karandin)';
+
+//Web Connection Name //prod
+
+SET scrURLConnectionName = 'lib://WorldPopulation';
+
+
+//link to procedure
+Set scrProcLinc = 'http://public.eprocurement.systems/ocds/tenders/';
+
+//Current year and # previous
+Set scrYearsLoad = 2;  
+
+Let scrCurrentDate = Today(1);
+Let scrEndYear = Year(scrCurrentDate);
+Let scrStartYear = scrEndYear - scrYearsLoad;
+
+
+Set scrPrefix = '_';
+Set scrLan1Name = 'En';	//English
+Set scrLan2Name = 'Prs';//Dari
+Set scrLan3Name = 'Ps';	//Pashto
+
+Set scrCurrency1Name = 'AFN';
+Set scrCurrency2Name = 'USD';
+
+///$tab 02. Procedures
+// Round to 2 digits
+Set scrRound 	= Round(Floor($1, 0.001), 0.01);
+Set scrRound4 	= Round(Floor($1, 0.00001), 0.0001);
+
+
+// Translation procedures
+SUB translationsNewTable(newTableName, existingTableName, keyField)
+// 0 - w/o KEEP
+  FieldNamesTmp:
+  NoConcatenate
+  Load 
+      "Index",
+      [$(scrLan1Name)],
+      [$(scrLan2Name)],
+      [$(scrLan3Name)]
+  Resident FieldNamesTable
+  Where Index Like '$(newTableName)';
+  
+  TRACE $(tableName);
+
+  Let scrLan1FieldName = Peek('$(scrLan1Name)', -1, 'FieldNamesTmp');
+  Let scrLan2FieldName = Peek('$(scrLan2Name)', -1, 'FieldNamesTmp');
+  Let scrLan3FieldName = Peek('$(scrLan3Name)', -1, 'FieldNamesTmp');
+
+  IF existingTableName <> 0 THEN
+    [$(newTableName)]:
+    Left Keep("$(existingTableName)")
+    Load 
+        "Index" as [$(keyField)],
+        [$(scrLan1Name)] as [$(scrLan1FieldName)],
+        [$(scrLan2Name)] as [$(scrLan2FieldName)],
+        [$(scrLan3Name)] as [$(scrLan3FieldName)]
+    Resident InnerDictionaries
+    Where attributeOf Like '$(newTableName)';
+    
+    ELSEIF existingTableName = 0 THEN
+    	[$(newTableName)]:
+    	Load 
+            "Index" as [$(keyField)],
+            [$(scrLan1Name)] as [$(scrLan1FieldName)],
+        	[$(scrLan2Name)] as [$(scrLan2FieldName)],
+            [$(scrLan3Name)] as [$(scrLan3FieldName)]
+    	Resident InnerDictionaries
+    	Where attributeOf Like '$(newTableName)';
+   ENDIF
+
+  drop table FieldNamesTmp;
+ENDSUB
+
+//KPI and Dims translations
+SUB translationsJoinInners(tableName, keyField)
+  JoinTypes:
+  Load Distinct 
+  		Reference as joinType
+  Resident InnerDictionaries
+  Where attributeOf Like '$(tableName)';
+
+  FOR Each scrJoinType in FieldValueList('joinType')
+    Left Join("$(tableName)")
+    Load 
+    	 Index as [$(keyField)],
+         [$(scrLan1Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan1Name)",
+         [$(scrLan2Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan2Name)",
+         [$(scrLan3Name)] as "$(scrPrefix)$(tableName)$(vJoinType)$(scrLan3Name)"
+    Resident InnerDictionaries
+    Where attributeOf Like '$(tableName)' AND Reference Like '$(scrJoinType)';
+  NEXT
+
+  Drop Table JoinTypes;
+ENDSUB
+
+//Technical function to monitor number of records in table during reload
+
+SUB numberOfRows(tableName, state, comment)
+	LET scrNumberOfRows = NOOFROWS('$(tableName)');
+    	IF '$(state)' = 0 THEN 
+        	TRACE Number of records in '$(tableName)' before '$(comment)' = $(scrNumberOfRows);
+        ELSEIF '$(state)' = 1 THEN 
+    		TRACE Number of records in '$(tableName)' after '$(comment)' = $(scrNumberOfRows);
+        ENDIF;
+    SET scrNumberOfRows =;
+ENDSUB
+///$tab 03. Mapping
+MapNulls:
+Mapping
+LOAD null() as initial_value
+	 ,'undefined' AS correct_value
+AutoGenerate(1)
+;
+
+MAP tender_mainprocurementcategory using MapNulls;
+///$tab 10. Transactions
+Directory [$(scrTRN_QVD_PATH)];
+
+// TendersContracts
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('TendersContracts$(scrPeriod).qvd')) THEN
+  	TenderTemp:
+    LOAD
+    release_id,
+    tender_datemodified,
+    tender_id,
+    tender_status,
+    tender_mainprocurementcategory,
+    procurementmethodrationale,
+    tender_tenderperiod_enddate,
+    tender_tenderperiod_startdate,
+//     tender_awardperiod_enddate,
+//     tender_awardperiod_startdate,
+//     tender_procuringentity_id,
+//     tender_procuringentity_name,
+    planning_budget_id,
+    planning_budget_amount,
+    planning_budget_currency,
+//     parties_procuringentity_id,
+//     parties_procuringentity_name,
+    contracts_mindate,
+    contract_status,
+    contract_statusdetails,
+    contract_id,
+    contract_description,
+    contract_title,
+    contract_datesigned 			AS contract_datetimesigned,
+    contract_value_amount,
+    contract_value_currency,
+    contract_period_enddate			AS contract_period_enddatetime,
+    contract_period_startdate		AS contract_period_startdatetime,
+    award_id,
+//     award_supplier_id,
+//     award_supplier_name,
+//     tender_datetime,
+//     tender_year,
+    tender_date,
+    tender_procuringentity_id_name,
+    contract_supplier_id_name
+    FROM [TendersContracts$(scrPeriod).qvd]
+    (qvd)
+    WHERE tender_date <= '$(scrCurrentDate)'
+    ;
+  ENDIF;
+NEXT scrPeriod;
+
+// Transformations 
+Tender:
+NoConcatenate
+Load
+	 *
+     ,Date(FLOOR(tender_date)) as CurrencyDateTender
+     ,Date(FLOOR(contract_datetimesigned)) as CurrencyDateContract
+     ,tender_id&'||'&contract_id&'||'&contract_supplier_id_name AS tender_contract_supplier_id_distinct
+     ,tender_id&'||'&contract_id								AS tender_contract_id_distinct
+     ,DATE(FLOOR(contract_datetimesigned)) 						AS contract_datesigned
+     ,DATE(FLOOR(contract_period_enddatetime)) 					AS contract_period_enddate
+     ,DATE(FLOOR(contract_period_startdatetime)) 				AS contract_period_startdate
+//      ,'$(scrProcLinc)'&ocid as [Link to procedure]
+Resident TenderTemp
+Where 
+//tender_status <> 'planned'
+(tender_tenderperiod_enddate > tender_tenderperiod_startdate OR ( ISNULL(tender_tenderperiod_enddate) OR ISNULL(tender_tenderperiod_startdate)))
+;
+
+Drop Table TenderTemp;
+
+//Contracts Milestones
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Contract_milestones$(scrPeriod).qvd')) THEN
+  	Contract_milestonesTemp:
+    LOAD
+        contract_id,
+//         contract_status,
+//         contract_statusdetails,
+//         tender_year,
+//         tender_date,
+//         tender_id,
+//         contract_datesigned,
+        contract_milestones_type,
+        noOfMilestones_onTime,
+        noOfMilestones_notOnTime,
+        noOfMilestones_dueDateInFuture,
+        noOfMilestones_noDueDate,
+        contracts_milestonesMetOnTimePercent,
+//         contracts_noMilestonesFlag,
+        contract_milestonesIsMetOnTime,
+        contracts_reasonNoPercent
+    FROM [Contract_milestones$(scrPeriod).qvd]
+    (qvd)
+    Where Exists(tender_id)
+	;
+  ENDIF;
+NEXT scrPeriod;
+
+Contract_milestones:
+NoConcatenate
+Load
+contract_id
+,contract_milestones_type
+,$(scrRound4(contracts_milestonesMetOnTimePercent)) AS contracts_milestonesMetOnTimePercent
+,contract_milestonesIsMetOnTime
+,contracts_reasonNoPercent
+,IF(ISNULL(contracts_reasonNoPercent), 1) AS contract_milestones_eligible
+
+,noOfMilestones_onTime
+,noOfMilestones_notOnTime
+,noOfMilestones_dueDateInFuture
+,noOfMilestones_noDueDate
+
+Resident  Contract_milestonesTemp;
+
+Drop Table Contract_milestonesTemp;
+
+//Contracts Transactions
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Contract_transactions$(scrPeriod).qvd')) THEN
+	Contract_transactionsTemp:
+    LOAD
+        release_id,
+        tender_id,
+        contract_id,
+        transactions_id,
+        transactions_date,
+        transactions_value_amount,
+        transactions_value_currency,
+        transactions_payee_id,
+        transactions_payee_name,
+        tender_datetime,
+        tender_year,
+        tender_date,
+        payee_id_name
+        FROM [Contract_transactions$(scrPeriod).qvd]
+        (qvd)
+        Where Exists(tender_id)
+        ;
+  ENDIF;
+NEXT scrPeriod;
+// Transformations 
+Contract_transactions:
+NoConcatenate
+LOAD    tender_id,
+	 	contract_id,
+        transactions_id,
+        DATE(FLOOR(transactions_date)) AS transactions_date,
+        transactions_value_amount,
+        transactions_value_currency,
+		payee_id_name
+        ,tender_id&'||'&contract_id&'||'&transactions_id&'||'&transactions_payee_id&'||'&transactions_payee_name AS transaction_distinct_id
+RESIDENT Contract_transactionsTemp;
+
+DROP TABLE Contract_transactionsTemp;
+///$tab 11. Transformations
+//Account for multiple records for a single tender and contract,
+//created by joining suppliers to the contract table and consequent join of contract table to the tender table
+
+LEFT JOIN(Tender)
+LOAD tender_id
+	 ,COUNT(tender_contract_supplier_id_distinct) AS tender_number_of_contract_records
+RESIDENT Tender
+GROUP BY tender_id
+;
+
+LEFT JOIN(Tender)
+LOAD contract_id
+	 ,COUNT(contract_supplier_id_name) AS contract_number_of_suppliers
+RESIDENT Tender
+GROUP BY contract_id
+;
+
+RENAME FIELDS 
+contract_value_amount 		TO contract_value_amount_
+;
+
+LEFT JOIN(Tender)
+LOAD tender_contract_supplier_id_distinct,
+	 IF(
+     	contract_number_of_suppliers > 0,
+        	$(scrRound(contract_value_amount_/contract_number_of_suppliers)),
+            	contract_value_amount_) AS contract_value_amount
+RESIDENT Tender;
+
+DROP FIELDS contract_value_amount_;
+
+RENAME FIELDS 
+planning_budget_amount 		TO planning_budget_amount_
+;
+
+LEFT JOIN(Tender)
+LOAD tender_contract_supplier_id_distinct,
+	 IF(
+     	tender_number_of_contract_records > 0,
+        	$(scrRound(planning_budget_amount_/tender_number_of_contract_records)),
+            	planning_budget_amount_) AS planning_budget_amount
+RESIDENT Tender;
+
+DROP FIELDS planning_budget_amount_;
+
+//Map 'Null()' value in Tender status to the 'Complete' value, if contract or award is present
+
+RENAME FIELD tender_status TO tender_status_;
+
+SET scrCompleteTenderStatus = 'complete';
+
+LEFT JOIN(Tender)
+LOAD tender_contract_supplier_id_distinct,
+	 IF(ISNULL(tender_status_) AND NOT(ISNULL(contract_id) OR ISNULL(award_id)),
+     	'$(scrCompleteTenderStatus)', 
+        	tender_status_) AS tender_status
+RESIDENT Tender;
+
+DROP FIELD tender_status_;
+///$tab 12. Currency
+// Currency exchange on the tender date
+Directory [$(scrTRN_QVD_PATH)];
+
+DistDates:
+Load 
+	 Num(Fieldvalue('CurrencyDateTender',RecNo())) as CEdate
+AutoGenerate FieldValueCount('CurrencyDateTender'); 
+
+CONCATENATE(DistDates)
+Load 
+	 Num(Fieldvalue('CurrencyDateContract',RecNo())) as CEdate
+AutoGenerate FieldValueCount('CurrencyDateContract'); 
+
+CONCATENATE(DistDates)
+Load 
+	 Num(Fieldvalue('transactions_date',RecNo())) as CEdate
+AutoGenerate FieldValueCount('transactions_date'); 
+
+MinMaxDates:
+Load 
+	Min(CEdate) as MinDate,
+	Max(CEdate) as MaxDate
+Resident DistDates;
+
+Drop Table DistDates;
+
+Let scrMinDate = Date(Peek('MinDate', -1, 'MinMaxDates'));
+Let scrMaxDate = Date(Peek('MaxDate', -1, 'MinMaxDates'));
+
+Drop Table MinMaxDates;
+
+CalendarTmp:
+Load Date('$(scrMinDate)' + RecNo() - 1) as CEdate
+AutoGenerate scrMaxDate - scrMinDate + 1;
+
+Currency:
+Load
+    CEdate,
+    Currency,
+    Rate
+From Currency????.qvd (qvd);
+
+// Rate to end of period
+CurrencyTmp:
+Load
+	 Currency, 
+	 Max(CEdate) as MaxDate 
+Resident Currency 
+Group By Currency;
+
+Left Join (CurrencyTmp)
+Load
+	 Currency, 
+	 CEdate as MaxDate, 
+	 Rate 
+Resident Currency;
+
+Left Join (CurrencyTmp)
+Load CEdate
+Resident CalendarTmp;
+
+Drop Table CalendarTmp;
+
+Concatenate (Currency)
+Load 
+	 Currency, 
+	 Rate,
+	 CEdate
+Resident CurrencyTmp
+Where CEdate > MaxDate;
+
+Drop Table CurrencyTmp; 
+
+FOR Each scrCurrency in FieldValueList('Currency') 	
+	Left Join (Tender)
+	LOAD 
+	 	CEdate as CurrencyDateTender,
+	 	Rate as [$(scrCurrency)]
+	Resident Currency
+	Where Currency='$(scrCurrency)';	
+    
+//     Left Join (Tender)
+// 	LOAD 
+// 	 	CEdate as CurrencyDateContract,
+// 	 	Rate as [$(scrCurrency)]
+// 	Resident Currency
+// 	Where Currency='$(scrCurrency)';     
+NEXT;
+
+// Drop Field CurrencyDate;
+DROP FIELDS CurrencyDateTender;
+
+Left Join (Tender)
+Load
+	 tender_contract_supplier_id_distinct,
+     Pick(Match([planning_budget_currency], 'AFN', 'USD', 'EUR'), [planning_budget_amount], $(scrRound([planning_budget_amount]*AFNUSD)), $(scrRound([planning_budget_amount]/EURAFN))) as [planning_budget_amount_AFN],
+     Pick(Match([planning_budget_currency], 'USD', 'AFN', 'EUR'), [planning_budget_amount], $(scrRound([planning_budget_amount]/AFNUSD)), $(scrRound([planning_budget_amount]/EURUSD))) as [planning_budget_amount_USD]
+Resident Tender;  
+
+Drop Fields AFNUSD, EURAFN, EURUSD /*, [planning_budget_amount], [planning_budget_currency]*/ From Tender;
+
+FOR Each scrCurrency in FieldValueList('Currency') 	
+// 	Left Join (Tender)
+// 	LOAD 
+// 	 	CEdate as CurrencyDateTender,
+// 	 	Rate as [$(scrCurrency)]
+// 	Resident Currency
+// 	Where Currency='$(scrCurrency)';	
+    
+    Left Join (Tender)
+	LOAD 
+	 	CEdate as CurrencyDateContract,
+	 	Rate as [$(scrCurrency)]
+	Resident Currency
+	Where Currency='$(scrCurrency)';     
+NEXT;
+
+DROP FIELDS CurrencyDateContract;
+
+Left Join (Tender)
+Load
+	 tender_contract_supplier_id_distinct,
+     Pick(Match([contract_value_currency], 'AFN', 'USD', 'EUR'), [contract_value_amount], $(scrRound([contract_value_amount]*AFNUSD)), $(scrRound([contract_value_amount]/EURAFN))) as [contract_value_amount_AFN],
+     Pick(Match([contract_value_currency], 'USD', 'AFN', 'EUR'), [contract_value_amount], $(scrRound([contract_value_amount]/AFNUSD)), $(scrRound([contract_value_amount]/EURUSD))) as [contract_value_amount_USD]
+Resident Tender; 
+
+Drop Fields AFNUSD, EURAFN, EURUSD/*,[contract_value_amount]*/ /*,[contract_value_currency]*/ From Tender;
+
+FOR Each scrCurrency in FieldValueList('Currency') 	
+
+	Left Join (Contract_transactions)
+	LOAD 
+	 	CEdate as transactions_date,
+	 	Rate as [$(scrCurrency)]
+	Resident Currency
+	Where Currency='$(scrCurrency)';     
+NEXT;
+
+// DROP FIELDS transactions_date;
+
+Left Join (Contract_transactions)
+Load
+	 transaction_distinct_id,
+     Pick(Match([transactions_value_currency], 'AFN', 'USD', 'EUR'), [transactions_value_amount], $(scrRound([transactions_value_amount]*AFNUSD)), $(scrRound([transactions_value_amount]/EURAFN))) as [transactions_value_amount_AFN],
+     Pick(Match([transactions_value_currency], 'USD', 'AFN', 'EUR'), [transactions_value_amount], $(scrRound([transactions_value_amount]/AFNUSD)), $(scrRound([transactions_value_amount]/EURUSD))) as [transactions_value_amount_USD]
+Resident Contract_transactions; 
+
+Drop Fields AFNUSD, EURAFN, EURUSD/*,[contract_value_amount]*/ /*,[contract_value_currency]*/ From Contract_transactions;
+
+Drop Table Currency;
+
+CurrencyLabel:
+Load * Inline [
+_Currency, _CurrencyIndex
+$(scrCurrency1Name), 1
+$(scrCurrency2Name), 2
+];
+///$tab 13. Transformations 2
+//Add contract transactions to the TenderContract Table
+
+LEFT JOIN(Tender)
+LOAD contract_id
+	 ,payee_id_name							AS contract_supplier_id_name
+     ,SUM(transactions_value_amount_AFN)	AS transactions_value_amount_AFN
+	 ,SUM(transactions_value_amount_USD)	AS transactions_value_amount_USD
+RESIDENT Contract_transactions
+GROUP BY contract_id, payee_id_name
+;
+
+DROP TABLE Contract_transactions;
+///$tab 20. Dictionaries
+Directory [$(scrDIC_QVD_PATH)];
+
+// RegionMap:
+// Mapping
+// LOAD
+//     FromRegion,
+//     ToRegion
+// FROM RegionMap.qvd (qvd);
+
+// Map [Procuring entity region], [Bidder region] using RegionMap;
+
+//ProcuringEntity
+ProcuringEntity:
+LOAD
+    procuringEntity_dateModified,
+    procuringEntity_name,
+    procuringEntity_id,
+    procuringEntity_identifier_id,
+    procuringEntity_identifier_legalname,
+    procuringEntity_identifier_scheme,
+    procuringEntity_contactpoint_email,
+    procuringEntity_contactpoint_faxnumber,
+    procuringEntity_contactpoint_name,
+    procuringEntity_contactpoint_telephone,
+    procuringEntity_address_countryname,
+    procuringEntity_address_locality,
+    procuringEntity_address_postalcode,
+    procuringEntity_address_region,
+    procuringEntity_address_streetaddress,
+    procuringEntity_id_name,
+    procuringEntity_id_name AS tender_procuringentity_id_name
+FROM [procuringEntity.qvd]
+(qvd)
+WHERE EXISTS(tender_procuringentity_id_name, procuringEntity_id_name)
+;
+
+//Supplier
+Supplier:
+LOAD
+    supplier_dateModified,
+    supplier_name,
+    supplier_id,
+    supplier_identifier_id,
+    supplier_identifier_legalname,
+    supplier_identifier_scheme,
+    supplier_contactpoint_email,
+    supplier_contactpoint_faxnumber,
+    supplier_contactpoint_name,
+    supplier_contactpoint_telephone,
+    supplier_address_countryname,
+    supplier_address_locality,
+    supplier_address_postalcode,
+    supplier_address_region,
+    supplier_address_streetaddress,
+    supplier_id_name,
+    supplier_id_name AS contract_supplier_id_name
+FROM [supplier.qvd]
+(qvd)
+WHERE EXISTS(contract_supplier_id_name,supplier_id_name)
+;
+
+// Directory [$(scrLOCAL_DATA_PATH)];
+
+// ProcuringEntityArea:
+// LOAD
+//     MDA_adm1.Name as [Procuring entity region],
+//     MDA_adm1.Area as [Procuring entity area]
+// FROM MDA_adm1.kml
+// (kml, Table is [Moldova divisions. Level 1]);
+
+
+///$tab 30. KPIs
+//Tender period length
+//Contract period length
+
+LEFT JOIN(Tender)
+LOAD tender_contract_supplier_id_distinct
+     ,FLOOR(tender_tenderperiod_enddate-tender_tenderperiod_startdate) 				AS tender_tenderperiod_length
+     ,FLOOR(contract_period_enddate-contract_period_startdate)						AS contract_contractperiod_length
+RESIDENT Tender;
+
+//Savings
+//Contract Exceeds Budget
+//Contract Overrun
+
+LEFT JOIN(Tender)
+LOAD *
+	 ,IF(contract_exceedsbudget = 1, -tender_savings_AFN, 0)						AS contract_overrun_AFN
+     ,IF(contract_exceedsbudget = 1, -tender_savings_USD, 0)						AS contract_overrun_USD
+;
+LOAD *
+	 ,IF(tender_savings_AFN < 0, 1)													AS contract_exceedsbudget
+;
+LOAD tender_contract_supplier_id_distinct
+	 ,RANGESUM(planning_budget_amount_AFN, 0) - contract_value_amount_AFN			AS tender_savings_AFN
+	 ,RANGESUM(planning_budget_amount_USD, 0) - contract_value_amount_USD			AS tender_savings_USD
+RESIDENT Tender
+WHERE NOT ISNULL(contract_id)
+;
+
+
+///$tab 31. Multilang
+Directory [$(scrDIC_QVD_PATH)];
+
+//Field names for multilingual dictionaries
+FieldNamesTable:
+NoConcatenate
+// LOAD
+//     "Index",
+//     En,
+//     Ro
+// FROM MultilangFieldNames.qvd (qvd);
+///////////For Dev Only!!!///////////////
+Load
+    F1 as Index,
+    F3 as En,
+    F4 as Ps,
+    F5 as Prs
+FROM [$(scrURLConnectionName)]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/14-rdPF8t6zz3Dwf6aX5Lsw84v8pjWh8g5S9ykvJHYA4/gviz/tq?tqx=out:html&tq&gid=306604835')
+Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+//Names and labels for internal KPIs and dimensions
+InnerDictionaries:
+// Load
+//     "Index",
+//     Reference,
+//     En,
+//     Ro,
+//     attributeOf
+// From MultilangDictionaries.qvd (qvd);
+///////////For Dev Only!!!///////////////
+Load
+    F1 as Index,
+    F2 as Reference,
+    F3 as En,
+    F4 as Ps,
+    F5 as Prs,
+    F6 as attributeOf
+From [$(scrURLConnectionName)]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/14-rdPF8t6zz3Dwf6aX5Lsw84v8pjWh8g5S9ykvJHYA4/gviz/tq?tqx=out:html&tq&gid=0')
+Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+//Label translations
+Set Verbatim = 1;
+
+Translations:
+NoConcatenate
+// Load     
+// 	"Index",
+//     En,
+//     Ro
+// From MultilangLabels.qvd (qvd);
+///////////For Dev Only!!!///////////////
+Load
+    F1 as "Index",
+    F3 as En,
+    F4 as Ps,
+    F5 as Prs
+FROM [$(scrURLConnectionName)]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/14-rdPF8t6zz3Dwf6aX5Lsw84v8pjWh8g5S9ykvJHYA4/gviz/tq?tqx=out:html&tq&gid=1187771814')
+Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+Language:
+CROSSTABLE (Language, Translation) LOAD 
+	 Index, 
+     En,
+     Ps,
+     Prs
+Resident Translations;
+
+LanguageList:
+Load Distinct
+	 Language as _Language
+Resident Language
+Where Language > 0;
+
+Left Join(LanguageList)
+Load
+    Index as [_Language],
+    En as [_Index]
+Resident InnerDictionaries
+Where attributeOf like 'LanguageList';
+
+DROP TABLE Translations;
+
+// Variables for UI localizing
+Let T = replace('_T_$1_@(=FirstSortedValue(distinct _Language, _Index))', '@', '$');
+
+LET scrTranslationsRows = NoOfRows('Language');
+
+FOR i = 0 to scrTranslationsRows - 1 
+	Let _scrTranslationId = Peek('Index', i, 'Language');
+	Let _scrTranslation = Peek('Translation', i, 'Language');
+	Let _scrTrLanguage = Peek('Language', i, 'Language');
+	
+	Let _scrTrName = '_T_$(_scrTranslationId)_$(_scrTrLanguage)';
+	Let $(_scrTrName) = '$(_scrTranslation)';
+	
+	Let _scrTranslationId =;
+	Let _scrTranslation =;
+	Let _scrTrLanguage =;
+	Let _scrTrName =;
+NEXT
+
+Drop Table Language;
+
+// Currency selection
+Let scrCurrency = replace('@(=FirstSortedValue(_Currency, _CurrencyIndex))', '@', '$');
+
+//Sheet and object descriptions 
+HelpTranslation:
+NoConcatenate
+// Load     
+// 	"Index",
+//     En,
+//     Ro
+// From MultilangHelp.qvd (qvd);
+///////////For Dev Only!!!///////////////
+Load
+    F1 as "Index",
+    F3 as En,
+    F4 as Ps,
+    F5 as Prs
+FROM [$(scrURLConnectionName)]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/14-rdPF8t6zz3Dwf6aX5Lsw84v8pjWh8g5S9ykvJHYA4/gviz/tq?tqx=out:html&tq&gid=1465926482')
+Where F1 <> 'Index' AND Len(F1) > 0;
+//////////////////////////
+
+LanguageHelp:
+CROSSTABLE (Language, Translation) 
+LOAD 
+	 Index, 
+     En,
+     Ps,
+     Prs
+Resident HelpTranslation;
+
+// Переменные для локализации хэлпов
+LET H = replace('_H_$1_@(=FirstSortedValue(_Language, _Index))', '@', '$');
+
+LET scrTranslationsRows = NoOfRows('LanguageHelp');
+
+FOR i = 0 TO scrTranslationsRows - 1 
+	Let _scrTranslationId = Peek('Index', i, 'LanguageHelp');
+	Let _scrTranslation = Peek('Translation', i, 'LanguageHelp');
+	Let _scrTrLanguage = Peek('Language', i, 'LanguageHelp');
+	
+	Let _scrTrName = '_H_$(_scrTranslationId)_$(_scrTrLanguage)';
+	Let $(_scrTrName) = '$(_scrTranslation)';
+	
+	Let _scrTranslationId =;
+	Let _scrTranslation =;
+	Let _scrTrLanguage =;
+	Let _scrTrName =;
+NEXT
+
+DROP Tables LanguageHelp, HelpTranslation;
+
+///$tab 40. Calendar
+MinMaxDates:
+Load 
+	Min(TenderDateTmp) as MinDate,
+	Max(TenderDateTmp) as MaxDate;	
+
+Load Num(Fieldvalue('tender_date',RecNo())) as TenderDateTmp 
+AutoGenerate FieldValueCount('tender_date'); 
+
+Let scrMinDate = Date(Peek('MinDate', -1, 'MinMaxDates'));
+Let scrMaxDate = Date(Peek('MaxDate', -1, 'MinMaxDates'));
+
+Drop Table MinMaxDates;
+
+Set MonthNames	='$(_T_scrMonthNames_En)';
+SET QuarterName	='$(_T_scrQuarterName_En)';
+
+Calendar:
+Load
+	 tender_date,
+     tender_date as [Calendar date],
+     Dual(Year(tender_date)&'-'&Month(tender_date), (Year(tender_date)-1) * 12 + Month(tender_date)) as [$(_T_fldYearMonth_En)],
+     Month(tender_date) as [$(_T_fldMonth_En)]
+     ,Dual(Year(tender_date)&'-'&'$(QuarterName)' & Ceil(Month(tender_date)/3), Year(tender_date) & num(Ceil(Month(tender_date)/3), '00')) as [$(_T_fldYearQuarter_En)]
+     ,'$(QuarterName)' & Ceil(Month(tender_date)/3) as [$(_T_fldQuarter_En)]
+     ,Year(tender_date) as [$(_T_fldYear_En)]
+
+;
+Load Date('$(scrMinDate)' + RecNo() - 1) as tender_date
+AutoGenerate scrMaxDate - scrMinDate + 1;    
+
+SET MonthNames	='$(_T_scrMonthNames_Ps)';
+SET QuarterName	='$(_T_scrQuarterName_Ps)';
+
+Left Join (Calendar)
+Load
+	 tender_date,
+     Dual(Year(tender_date)&'-'&Month(tender_date), (Year(tender_date)-1) * 12 + Month(tender_date)) as [$(_T_fldYearMonth_Ps)],
+     Month(tender_date) as [$(_T_fldMonth_Ps)]
+     ,Dual(Year(tender_date)&'-'&'$(QuarterName)' & Ceil(Month(tender_date)/3), Year(tender_date) & num(Ceil(Month(tender_date)/3), '00')) as [$(_T_fldYearQuarter_Ps)]
+     ,'$(QuarterName)' & Ceil(Month(tender_date)/3) as [$(_T_fldQuarter_Ps)]
+     ,Year(tender_date) as [$(_T_fldYear_Ps)]
+Resident Calendar;     
+
+SET MonthNames	='$(_T_scrMonthNames_Prs)';
+SET QuarterName	='$(_T_scrQuarterName_Prs)';
+
+
+Left Join (Calendar)
+Load
+	 tender_date,
+     Dual(Year(tender_date)&'-'&Month(tender_date), (Year(tender_date)-1) * 12 + Month(tender_date)) as [$(_T_fldYearMonth_Prs)],
+     Month(tender_date) as [$(_T_fldMonth_Prs)]
+     ,Dual(Year(tender_date)&'-'&'$(QuarterName)' & Ceil(Month(tender_date)/3), Year(tender_date) & num(Ceil(Month(tender_date)/3), '00')) as [$(_T_fldYearQuarter_Prs)]
+     ,'$(QuarterName)' & Ceil(Month(tender_date)/3) as [$(_T_fldQuarter_Prs)]
+     ,Year(tender_date) as [$(_T_fldYear_Prs)]
+Resident Calendar; 
+///$tab 50. Rename/Drop Fields
+DROP FIELDS /*planning_budget_currency, contract_statusdetails, contract_value_currency,*/ procuringEntity_dateModified, procuringEntity_identifier_id,
+procuringEntity_identifier_legalname, procuringEntity_identifier_scheme, supplier_dateModified, supplier_identifier_id, supplier_identifier_legalname,
+supplier_identifier_scheme, procurementmethodrationale, contract_datetimesigned
+,tender_tenderperiod_enddate,tender_tenderperiod_startdate,tender_datemodified,tender_contract_supplier_id_distinct,tender_contract_id_distinct,contracts_mindate
+,planning_budget_id,planning_budget_amount,contract_value_amount,planning_budget_currency,contract_value_currency
+,contract_period_enddate,contract_period_startdate,contract_period_enddatetime,contract_period_startdatetime
+;
+
+//Change technical field names to user friendly ones
+
+RENAME FIELDS 
+
+//Tender
+release_id								TO [ocid]
+,tender_datemodified					TO [Tender date modified]			
+,tender_id								TO [IDTender]
+,tender_status							TO [TenderStatus]
+,tender_mainprocurementcategory			TO [TenderProcurementCategory]
+// ,procurementmethodrationale				TO [Procurement Method Rationale] //no present values found
+// ,planning_budget_id						TO [IDBudget]
+// ,planning_budget_amount					TO [Budget Amount]
+,planning_budget_amount_AFN				TO [Budget amount AFN]
+,planning_budget_amount_USD				TO [Budget amount USD]
+,tender_date							TO [Tender date]
+,tender_procuringentity_id_name			TO [_procuringEntity_id_name]
+
+//Contract
+
+,contract_status 						TO [ContractStatus]
+,contract_statusdetails					TO [ContractStatusDetails]
+,contract_id 							TO [IDContract]
+,contract_description 					TO [Contract description]
+,contract_title 						TO [Contract title]
+,contract_datesigned 					TO [Contract date signed]
+// ,contract_value_amount 					TO [Contract Amount]
+,contract_value_amount_AFN				TO [Contract amount AFN]
+,contract_value_amount_USD				TO [Contract amount USD]
+,award_id 								TO [IDAward]
+,contract_supplier_id_name				TO [_supplier_id_name]
+
+//Calculated KPIs
+
+,tender_savings_AFN						TO [Savings AFN]
+,tender_savings_USD						TO [Savings USD]
+,tender_tenderperiod_length				TO [Tender period length]
+,contract_contractperiod_length			TO [Contract period length]
+,contract_exceedsbudget					TO [Contract exceeds budget]
+,contract_overrun_AFN					TO [Contract overrun AFN]
+,contract_overrun_USD					TO [Contract overrun USD]
+
+//Procuring Entity => Buyer
+
+,procuringEntity_name 					TO [Buyer name]
+,procuringEntity_id 					TO [IDProcuringEntity]
+// ,procuringEntity_identifier_id 			TO []
+// ,procuringEntity_identifier_legalname	TO []
+// ,procuringEntity_identifier_scheme 		TO []
+,procuringEntity_contactpoint_email 	TO [Buyer email]
+,procuringEntity_contactpoint_faxnumber TO [Buyer fax]
+,procuringEntity_contactpoint_name 		TO [Buyer contact]
+,procuringEntity_contactpoint_telephone TO [Buyer phone]
+,procuringEntity_address_countryname 	TO [Buyer country]
+,procuringEntity_address_locality 		TO [Buyer city]
+,procuringEntity_address_postalcode 	TO [Buyer postal code]
+,procuringEntity_address_region 		TO [Buyer region]
+,procuringEntity_address_streetaddress 	TO [Buyer address]
+,procuringEntity_id_name 				TO [Buyer ID name]
+    
+
+//Supplier
+,supplier_name 							TO [Supplier name]
+,supplier_id 							TO [IDSupplier]
+// ,supplier_identifier_id 				TO []
+// ,supplier_identifier_legalname 		TO []
+// ,supplier_identifier_scheme 			TO []
+,supplier_contactpoint_email 			TO [Supplier email]
+,supplier_contactpoint_faxnumber		TO [Supplier fax]
+,supplier_contactpoint_name 			TO [Supplier contact]
+,supplier_contactpoint_telephone		TO [Supplier phone]
+,supplier_address_countryname 			TO [Supplier country]
+,supplier_address_locality 				TO [Supplier city]
+,supplier_address_postalcode 			TO [Supplier postal code]
+,supplier_address_region 				TO [Supplier region]
+,supplier_address_streetaddress 		TO [Supplier address]
+,supplier_id_name 						TO [Supplier ID name]
+
+//Contract Milestones
+
+,contract_milestones_type				TO [MilestoneType]
+,contracts_milestonesMetOnTimePercent	TO [Contract milestones percent]
+,contract_milestonesIsMetOnTime			TO [Contract milestone on time]
+,contracts_reasonNoPercent				TO [Reason no milestones]
+,contract_milestones_eligible			TO [Contract milestones present]
+,noOfMilestones_onTime					TO [No of milestones on time]
+,noOfMilestones_notOnTime				TO [No of milestones not on time]
+,noOfMilestones_dueDateInFuture			TO [No of milestones w/ due date in future]
+,noOfMilestones_noDueDate				TO [No of milestones w/o due date]
+
+//Contract Transactions
+
+,transactions_value_amount_AFN			TO [Contract transaction amount AFN]
+,transactions_value_amount_USD			TO [Contract transaction amount USD]
+
+//End rename
+;
+
+Autonumber _procuringEntity_id_name,_supplier_id_name;
+///$tab 60. Variables
+//Fields
+
+//Procuring Entity => Buyer
+
+Set fldProcuringEntityId 		= '[Buyer ID name]';
+Set fldProcuringEntity 			= '[Buyer name]';
+Set fldProcuringEntityRegion 	= '[Buyer region]';
+Set fldProcuringEntityAddress 	= '[Buyer address]';
+Set fldProcuringEntityCountry 	= '[Buyer country]';
+SET fldProcuringEntityContact	= '[Buyer contact]';
+SET fldProcuringEntityEmail		= '[Buyer email]';
+SET fldProcuringEntityFax		= '[Buyer fax]';
+SET fldProcuringEntityPhone		= '[Buyer phone]';
+SET fldProcuringEntityLocality	= '[Buyer city]';
+SET fldProcuringEntityPostalCode= '[Buyer postal code]';
+
+//Supplier
+
+Set fldSupplierId 				= '[Supplier ID name]';
+Set fldSupplier 				= '[Supplier name]';
+Set fldSupplierRegion 			= '[Supplier region]';
+Set fldSupplierAddress 			= '[Supplier address]';
+Set fldSupplierCountry 			= '[Supplier country]';
+SET fldSupplierContact			= '[Supplier contact]';
+SET fldSupplierEmail			= '[Supplier email]';
+SET fldSupplierFax				= '[Supplier fax]';
+SET fldSupplierPhone			= '[Supplier phone]';
+SET fldSupplierLocality			= '[Supplier city]';
+SET fldSupplierPostalCode		= '[Supplier postal code]';
+
+//Tender
+Set fldOCID 					= 'ocid';
+Set fldTenderStatus 			= 'TenderStatus';
+SET fldTenderId					= '[IDTender]';
+SET fldTenderAmount				= =replace('[Budget amount @(scrCurrency)]', '@', '$');
+SET fldTenderProcCategory		= '[Tender procurement category]';
+SET fldTenderDate				= '[Tender date]';
+SET fldLengthOfTenderPeriod		= '[Tender period length]';
+SET fldSavings					= =replace('[Savings @(scrCurrency)]', '@', '$');
+
+//Contract
+Set fldContractId 				= 'IDContract';
+Set fldContractStatus 			= 'ContractStatus';
+SET fldContractAmount			= =replace('[Contract amount @(scrCurrency)]', '@', '$');
+SET fldContractOnTime			= '[Contract milestone on time]';
+SET fldContractWithMilestones	= '[Contract milestones present]';
+SET fldContractExceedsBudget	= '[Contract exceeds budget]';
+SET fldContractOverrun			= =replace('[Contract overrun @(scrCurrency)]', '@', '$');
+SET fldMilestonesPercent		= '[Contract milestones percent]';
+SET fldMilestonesOnTimeField	= '[No of milestones on time]';
+SET fldMilestonesNotOnTimeField	= '[No of milestones not on time]';
+SET fldMilestonesFDueDateField	= '[No of milestones w/ due date in future]';
+SET fldMilestonesNoDueDateField	= '[No of milestones w/o due date]';
+SET fldMilestonesType			= '[MilestoneType]';
+SET fldContractTitle			= '[Contract title]';
+SET fldContractDescription		= '[Contract description]';
+SET fldContractPeriodLength		= '[Contract period length]';
+SET fldContractTransAmount		= =replace('[Contract transaction amount @(scrCurrency)]', '@', '$');
+
+
+//Current language
+Let expLan 						= Replace('@(=_Language)', '@', '$');
+
+//Set Analysis
+Set scrPARAMS 					= (=replace('$1', ';', ',')); 
+
+Set saContractCancelled 		= '$(fldContractStatus)={cancelled}';
+Set saContractNotCancelled 		= '$(fldContractStatus)=-{cancelled}';
+SET saContractOnTime			= '$(fldContractOnTime)={1}';
+SET saContractWithMilestones	= '$(fldContractWithMilestones)={1}';
+SET saContractExceedsBudget		= '$(fldContractExceedsBudget)={1}';
+SET saTenderCancelled			= '$(fldTenderStatus)={cancelled}';
+SET saMilestoneDelivery			= '$(fldMilestonesType)={delivery}';
+SET saMilestoneFinancing		= '$(fldMilestonesType)={financing}';
+
+//KPIs
+Set scrNO_OF_PROCEDURES_ 		= 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldOCID)'&')';
+Let expNoOfProcedures 			= $(scrNO_OF_PROCEDURES_);
+
+Set scrNO_OF_TENDERS_ 			= 'COUNT({<$'&scrPARAMS&'>} $(fldTenderId)'&')';
+Let expNoOfTenders 				= $(scrNO_OF_TENDERS_);
+
+Set scrNO_OF_PROC_ENTITIES_ 	= 'COUNT({<$'&scrPARAMS&'>} $(fldProcuringEntityId)'&')';
+Let expNoOfProcEntities 		= $(scrNO_OF_PROC_ENTITIES_);
+
+
+Set scrNO_OF_SUPPLIERS_ 		= 'COUNT({<$'&scrPARAMS&'>} $(fldSupplierId)'&')';
+Let expNoOfSuppliers 			= $(scrNO_OF_SUPPLIERS_);
+
+Set scrEXPECTED_VALUE_ 			= 'SUM({<$'&scrPARAMS&'>} $'&'($(fldTenderAmount)'&'))';
+Let expExpectedValue 			= $(scrEXPECTED_VALUE_);
+
+Set scrNO_OF_CONTRACTS_ 		= 'COUNT({<$'&scrPARAMS&'>} Distinct $(fldContractId)'&')';
+Let expNoOfContracts 			= $(scrNO_OF_CONTRACTS_);
+
+Set scrCONTRACT_VALUE_ 			= 'SUM({<$'&scrPARAMS&'>} $'&'($(fldContractAmount)'&'))';
+Let expContractValue 			= $(scrCONTRACT_VALUE_);
+
+Set scrCONTRACT_VALUE_TOTAL		= 'SUM({<$'&scrPARAMS&'>} Total $'&'($(fldContractAmount)'&'))';
+Let expContractValueTotal 		= $(scrCONTRACT_VALUE_TOTAL);
+
+Set scrCONTRACT_TRANS_VALUE_ 	= 'SUM({<$'&scrPARAMS&'>} $'&'($(fldContractTransAmount)'&'))';
+Let expContractTransValue		= $(scrCONTRACT_TRANS_VALUE_);
+
+SET scrSAVINGS_VALUE_			= 'SUM({<$'&scrPARAMS&'>} $'&'($(fldSavings)'&'))';
+LET expSavingsValue				= $(scrSAVINGS_VALUE_); 
+
+Set scrLENGTH_OF_TENDER_PERIOD_ = 'AVG({<$'&scrPARAMS&'>} $(fldLengthOfTenderPeriod)'&')';
+Let expLengthOfTenderPeriod 	= $(scrLENGTH_OF_TENDER_PERIOD_);
+
+Set scrLENGTH_OF_CONTRACT_PERIOD_ = 'AVG({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldContractPeriodLength)'&')';
+Let expLengthOfContractPeriod 	= $(scrLENGTH_OF_CONTRACT_PERIOD_);
+
+Set scrCONTRACT_ONTIME_ 		= '( COUNT({<$'&scrPARAMS&',$(saContractNotCancelled),$(saContractOnTime)>} DISTINCT $(fldContractId)'&') / COUNT({<$'&scrPARAMS&',$(saContractNotCancelled),$(saContractWithMilestones)>} DISTINCT $(fldContractId)'&') )';
+Let expContractsOnTimePercent 	= $(scrCONTRACT_ONTIME_);
+
+Set scrCONTRACT_OVERBUDGET_ 	= '( COUNT({<$'&scrPARAMS&',$(saContractNotCancelled),$(saContractExceedsBudget)>} DISTINCT $(fldContractId)'&') / COUNT({<$'&scrPARAMS&',$(saContractNotCancelled)>} DISTINCT $(fldContractId)'&') )';
+Let expContractsExceedBudget 	= $(scrCONTRACT_OVERBUDGET_);
+
+SET scrCONTACT_OVERRUN_			= 'AVG({<$'&scrPARAMS&'>} $'&'($(fldContractOverrun)'&'))';
+LET expAvgContractOverrun		= $(scrCONTACT_OVERRUN_); 
+
+SET scrAVG_MILESTONE_REACH_		= 'AVG({<$'&scrPARAMS&'>} $(fldMilestonesPercent)'&')';
+LET expAvgMilestonesReach		= $(scrAVG_MILESTONE_REACH_); 
+
+SET scrNOOFMILESTONESONTIME		= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesOnTimeField)'&')'; 
+LET expNoOfMilestonesOnTime		= $(scrNOOFMILESTONESONTIME); 
+
+SET scrNOOFMILESTONESNOTONTIME	= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesNotOnTimeField)'&')'; 
+LET expNoOfMilestonesNotOnTime	= $(scrNOOFMILESTONESNOTONTIME); 
+
+SET scrNOOFMILESTONESFDD		= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesFDueDateField)'&')'; 
+LET expNoOfMilestonesFDueDate	= $(scrNOOFMILESTONESFDD); 
+
+SET scrNOOFMILESTONENOFDD		= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesNoDueDateField)'&')'; 
+LET expNoOfMilestonesNoDueDate	= $(scrNOOFMILESTONENOFDD); 
+
+SET scrTOTALNOOFMILESTONES		= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesOnTimeField) + $(fldMilestonesNotOnTimeField) + $(fldMilestonesFDueDateField) + $(fldMilestonesNoDueDateField)'&')'; 
+LET expTotalNoOfMilestones		= $(scrTOTALNOOFMILESTONES); 
+
+SET scrTOTALNOOFELIGMILESTONES 	= 'SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesOnTimeField) + $(fldMilestonesNotOnTimeField)'&')'; 
+LET expTotalNoOfEligMilestones	= $(scrTOTALNOOFELIGMILESTONES); 
+
+SET scrAVGNOOFMILESTONES		= '( SUM({<$'&scrPARAMS&',$(saContractNotCancelled)>} $(fldMilestonesOnTimeField) + $(fldMilestonesNotOnTimeField) + $(fldMilestonesFDueDateField) + $(fldMilestonesNoDueDateField)'&') / COUNT({<$'&scrPARAMS&',$(saContractNotCancelled),$(saContractWithMilestones)>} DISTINCT $(fldContractId)'&') )';
+LET expAvgNoOfMilestones		= $(scrAVGNOOFMILESTONES); 
+///$tab 70. Interface Add Tables
+//KPI Tables
+
+KPIList:
+Load
+	 _KPINo, 
+     replace(_Exp, '@', '$') as _Exp
+;
+Load * Inline [
+_KPINo, 	_Exp
+1,			@(expNoOfProcedures)
+2,			@(expExpectedValue)
+3,			@(expNoOfContracts($(saContractNotCancelled)))
+4,			@(expContractValue($(saContractNotCancelled)))
+];
+
+//5,			@(expSavingsValue($(saContractNotCancelled)))
+
+KPIListEfficiency:
+NoConcatenate
+Load
+	 _KPINoEfficiency, 
+     'Num(' & replace(_ExpEfficiency, '@', '$') & ', ' & chr(39) & _Format & chr(39) & ')' as _ExpEfficiency
+;
+Load * Inline [
+_KPINoEfficiency|_ExpEfficiency|_Format
+1|@(expContractsOnTimePercent)|#,##0.00%
+2|@(expNoOfContracts($(saContractCancelled)))/@(expNoOfContracts)|#,##0.00%
+3|@(expLengthOfTenderPeriod)|#,##0.00
+4|@(expLengthOfContractPeriod)|#,##0.00
+] (delimiter is '|');
+
+//4|@(expNoOfProcedures($(saTenderCancelled)))/$(expNoOfProcedures)|#,##0.00%
+
+
+DimListEfficiency:
+NoConcatenate
+Load
+	 _DimNoEfficiency, 
+     //replace(_DimTitleEfficiency, '@', '$') AS _DimTitleEfficiency,
+     IF(_DimNoEfficiency = 3,
+     	'['&replace(_DimFieldEfficiency, '@', '$')&']',
+     		replace(_DimFieldEfficiency, '@', '$') ) AS _DimFieldEfficiency
+;
+Load * Inline [
+_DimNoEfficiency|_DimFieldEfficiency|_DimTitleEfficiency
+1|@(fldProcuringEntityId)|@(=@(T(ttlProcuringEntity)))
+2|@(fldSupplierId)|@(=@(T(ttlSupplier)))
+3|"@(=@(T(fldProcurementCategory)))"|@(=@(T(ttlProcurementCategory)))
+] (delimiter is '|');
+
+DimListMilestones:
+NoConcatenate
+Load
+	 _DimNoMilestones, 
+     //replace(_DimTitleEfficiency, '@', '$') AS _DimTitleEfficiency,
+     replace(_DimFieldMilestones, '@', '$') AS _DimFieldMilestones
+;
+Load * Inline [
+_DimNoMilestones|_DimFieldMilestones
+1|@(fldProcuringEntityId)
+2|@(fldSupplierId)
+3|@(fldContractId)
+] (delimiter is '|');
+
+CALL translationsJoinInners('KPIList', '_KPINo');
+CALL translationsJoinInners('KPIListEfficiency', '_KPINoEfficiency');
+CALL translationsJoinInners('DimListEfficiency', '_DimNoEfficiency');
+CALL translationsJoinInners('DimListMilestones', '_DimNoMilestones');
+CALL translationsNewTable('ProcedureStatus', 'Tender', 'TenderStatus');
+CALL translationsNewTable('ContractStatus', 'Tender', 'ContractStatus');
+CALL translationsNewTable('TenderProcurementCategory', 'Tender', 'TenderProcurementCategory');
+CALL translationsNewTable('MilestoneType', 'Tender', 'MilestoneType');
+
+Drop Tables FieldNamesTable, InnerDictionaries;
+
+
+Set scrSize = Div(Log10(Fabs($1)),3);
+Let fmtNumConvert = Replace('Dual(Pick($(scrSize($1))+1, NUM($1, ''#,##0''), NUM($1/1000, ''#,##0.00@(=@(T(fmtK)))'', ''.'', '',''), 
+NUM($1/1000000, ''#,##0.00@(=@(T(fmtMLN)))'', ''.'', '',''), NUM($1/1000000000, ''#,##0.00@(=@(T(fmtBN)))'', ''.'', '',''), 
+NUM($1/1000000000000, ''#,##0.00@(=@(T(fmtTRLN)))'', ''.'', '',''), NUM($1/1000000000000000, ''#,##0.00@(=@(T(fmtQDLN)))'', ''.'', '','')),$1)', '@', '$');
+
+$(Must_Include=lib://OCDSint/Benchmarking/UpdateSection/Afghanistan.txt);
+
+///$tab EXIT SCRIPT;
+EXIT SCRIPT;
+///$tab 10. Transactions
+Directory [$(scrTRN_QVD_PATH)];
+
+// Tenders
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Tenders$(scrPeriod).qvd')) THEN
+  	TenderTemp:
+    LOAD
+        release_id,
+        tender_datemodified,
+        tender_id,
+        tender_status,
+        tender_mainprocurementcategory,
+        procurementmethodrationale,
+        planning_budget_id,
+        planning_budget_amount,
+        planning_budget_currency,
+        tender_date,
+        tender_procuringentity_id_name,
+        tender_tenderperiod_enddate,
+        tender_tenderperiod_startdate
+//         tender_awardperiod_enddate,
+//         tender_awardperiod_startdate,
+//         tender_procuringentity_id,
+//         tender_procuringentity_name,
+
+//         parties_procuringentity_id,
+//         parties_procuringentity_name,
+//         contracts_mindate,
+//         tender_datetime,
+//         tender_year,
+    FROM [Tenders$(scrPeriod).qvd]
+    (qvd);
+  ENDIF;
+NEXT scrPeriod;
+// Transformations 
+Tender:
+NoConcatenate
+Load
+	 *
+     ,Date(tender_date) as CurrencyDate
+//      ,'$(scrProcLinc)'&ocid as [Link to procedure]
+Resident TenderTemp
+// Where tender_status <> 'planned'
+;
+
+Drop Table TenderTemp;
+ 
+//Contracts
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Contracts$(scrPeriod).qvd')) THEN
+    ContractTemp:
+    LOAD
+        tender_id,
+        contract_status,
+        contract_statusdetails,
+        contract_id,
+        contract_description,
+        contract_title,
+        contract_datesigned,
+        contract_value_amount,
+        contract_value_currency,
+        award_id,
+        contract_supplier_id_name
+//        ,//for debug
+//         award_supplier_id,
+//         award_supplier_name,
+//         tender_datetime,
+//         tender_year,
+//         tender_date,
+// 		,
+//         release_id
+//         ,tender_datemodified
+//         ,contract_period_enddate
+//         ,contract_period_startdate
+    FROM [Contracts$(scrPeriod).qvd]
+    (qvd)
+    Where Exists(tender_id)
+	;
+  ENDIF;
+NEXT scrPeriod;
+
+Contract:
+NoConcatenate
+Load
+	 *
+     ,DATE(FLOOR(contract_datesigned)) AS CurrencyDate
+     ,contract_id&'||'&contract_supplier_id_name AS contract_id_distinct
+Resident  ContractTemp;
+
+Drop Table ContractTemp;
+
+
+
+//Contracts Milestones
+FOR scrPeriod = $(scrStartYear) to $(scrEndYear)
+  IF NOT IsNull(FileSize('Contracts$(scrPeriod).qvd')) THEN
+  	Contract_milestonesTemp:
+    LOAD
+        contract_id,
+//         contract_status,
+//         contract_statusdetails,
+//         tender_year,
+//         tender_date,
+//         tender_id,
+//         contract_datesigned,
+        contract_milestones_type,
+//         noOfMilestones_onTime,
+//         noOfMilestones_notOnTime,
+//         noOfMilestones_dueDateInFuture,
+//         noOfMilestones_noDueDate,
+        contracts_milestonesMetOnTimePercent,
+//         contracts_noMilestonesFlag,
+        contract_milestonesIsMetOnTime,
+        contracts_reasonNoPercent
+    FROM [Contract_milestones$(scrPeriod).qvd]
+    (qvd)
+    Where Exists(tender_id)
+	;
+  ENDIF;
+NEXT scrPeriod;
+
+Contract_milestones:
+NoConcatenate
+Load
+contract_id
+,contract_milestones_type
+,$(scrRound4(contracts_milestonesMetOnTimePercent)) AS contracts_milestonesMetOnTimePercent
+,contract_milestonesIsMetOnTime
+,contracts_reasonNoPercent
+,IF(ISNULL(contracts_reasonNoPercent), 1) AS contract_milestones_eligible
+Resident  Contract_milestonesTemp;
+
+Drop Table Contract_milestonesTemp;
+
+
+///$tab 12. Transformations
+//Account for multiple records for a single contract,
+//created by joining suppliers to the contract table
+
+LEFT JOIN(Contract)
+LOAD contract_id
+	 ,COUNT(contract_supplier_id_name) AS contract_number_of_suppliers
+RESIDENT Contract
+GROUP BY contract_id
+;
+
+//Combine contracts and tenders in a single table
+
+OUTER JOIN(Tender)
+LOAD 
+tender_id
+,contract_status
+,contract_statusdetails
+,contract_id
+,contract_description
+,contract_title
+,contract_datesigned
+,contract_value_amount
+,contract_value_amount_AFN
+,contract_value_amount_USD
+,contract_value_currency
+,award_id
+,contract_supplier_id_name
+,contract_id_distinct
+,contract_number_of_suppliers
+RESIDENT Contract;
+
+DROP TABLE Contract;
+
+
+//Account for multiple records for a single contract,
+//created by joining suppliers to the contract table
+
+RENAME FIELDS 
+contract_value_amount 		TO contract_value_amount_
+,contract_value_amount_AFN	TO contract_value_amount_AFN_
+,contract_value_amount_USD	TO contract_value_amount_USD_
+,planning_budget_amount		TO planning_budget_amount_
+,planning_budget_amount_AFN TO planning_budget_amount_AFN_
+,planning_budget_amount_USD	TO planning_budget_amount_USD_
+;
+
+LEFT JOIN(Tender)
+LOAD tender_id,
+	 contract_id_distinct,
+	 IF(
+     	contract_number_of_suppliers > 0,
+        	contract_value_amount_/contract_number_of_suppliers,
+            	contract_value_amount_) AS contract_value_amount
+	 ,
+     IF(
+     	contract_number_of_suppliers > 0,
+        	contract_value_amount_AFN_/contract_number_of_suppliers,
+            	contract_value_amount_AFN_) AS contract_value_amount_AFN
+     ,
+     IF(
+     	contract_number_of_suppliers > 0,
+        	contract_value_amount_USD_/contract_number_of_suppliers,
+            	contract_value_amount_USD_) AS contract_value_amount_USD
+     ,
+     IF(
+     	contract_number_of_suppliers > 0,
+        	planning_budget_amount_/contract_number_of_suppliers,
+            	planning_budget_amount_) AS planning_budget_amount
+     ,
+     IF(
+     	contract_number_of_suppliers > 0,
+        	planning_budget_amount_AFN_/contract_number_of_suppliers,
+            	planning_budget_amount_AFN_) AS planning_budget_amount_AFN_
+     ,
+     IF(
+     	contract_number_of_suppliers > 0,
+        	planning_budget_amount_USD_/contract_number_of_suppliers,
+            	planning_budget_amount_USD_) AS planning_budget_amount_USD
+RESIDENT Tender;
+
+DROP FIELDS 
+contract_value_amount_
+,contract_value_amount_AFN_
+,contract_value_amount_USD_
+,planning_budget_amount_
+,planning_budget_amount_AFN_
+,planning_budget_amount_USD_
+;
+

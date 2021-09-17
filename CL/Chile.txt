@@ -1,0 +1,167 @@
+SET scrLOCAL_BENCH_PATH = 'lib://OCDSint/Benchmarking/';
+
+details:
+Load tender_id as [Tender ID]
+    ,ProcedureStatus as TenderStatus
+	,ProcurementMethod
+    ,tender_procuring_entity_id as IDProcuringEntity
+    ,[Award ID] as IDAward
+    ,IF(Match(AwardStatus,'unsuccessful','cancelled'),Null(),[Award amount USD]) as [Award amount USD]
+    ,IF(Match(AwardStatus,'unsuccessful','cancelled'),Null(),1) as AwardedFlag
+    ,[Overrun USD]
+    ,[Number of tenderers]
+	,[Days from tender close to award decision] as DaysFromCloseToAward
+    ,[Tender period length] as [TenderPeriod]
+    ,Year([Procedure date]) as [BM_Year]
+    ,Month([Procedure date]) as [Month]
+Resident TenderAward;
+
+LET details_NoOfRows = NoOfRows('details');
+Trace details_NoOfRows >> '$(details_NoOfRows)';
+
+// Tender CPV Division
+// https://wiki.eclass.eu/wiki/CEN link to the mapping tables
+UNSPSC_CPVdivision_mapping:
+mapping
+LOAD
+    UNSPSC_code,
+    CPV_Division
+FROM [$(scrLOCAL_BENCH_PATH)UNSPSC_CPVdivision_mapping.csv]
+(txt, utf8, embedded labels, delimiter is ',', msq);
+
+item_cpv_div:
+Load tender_id as [Tender ID]
+	,[Item classification ID]
+Resident Items;
+
+Left Join (item_cpv_div)
+Load [Item classification ID]
+	,ApplyMap('UNSPSC_CPVdivision_mapping',SubField([Item classification],' | ',2),Null()) as item_cpv_div
+Resident ProcurementCategory;
+
+// FIXIT
+Left Join (ProcurementCategory)
+Load [Item classification ID]
+	,ApplyMap('UNSPSC_CPVdivision_mapping',SubField([Item classification],' | ',2),Null()) as item_cpv_div
+Resident ProcurementCategory;
+
+tender_cpv_div:
+Load [Tender ID]
+	,Concat(distinct item_cpv_div,',') as tender_cpv_div
+Resident item_cpv_div
+Group by [Tender ID];
+
+Drop table item_cpv_div;
+
+Left Join (details)
+Load [Tender ID]
+	,IF(SubStringCount(tender_cpv_div,',')>0 or len(tender_cpv_div)=0,0,tender_cpv_div) as CPV2
+Resident tender_cpv_div;
+
+Drop table tender_cpv_div;
+
+// for contracts
+details2:
+NoConcatenate
+Load [Tender ID]
+    ,TenderStatus
+	,ProcurementMethod
+    ,CPV2
+    ,[BM_Year]
+    ,[Month]
+Resident details;
+
+suppliers:
+Load distinct tender_id as [Tender ID]
+	,award_supplier_id as IDSupplier
+Resident TendererSupplier;
+
+Left Join (details)
+Load *
+Resident suppliers;
+
+Drop table suppliers;
+
+LET details_NoOfRows = NoOfRows('details');
+Trace details_NoOfRows >> '$(details_NoOfRows)';
+
+Left Join (details2)
+Load tender_id as [Tender ID]
+	,contract_id as IDContract
+	,IF(ContractStatus = 'cancelled',NULL(),[Contract amount USD]) as [Contract amount USD]
+    ,ContractStatus
+    ,flag_contract_on_time as [Contract milestone on time]
+    ,flag_present_milestones as [Contract milestones present]
+Resident Contracts;
+
+Concatenate (details)
+Load *
+Resident details2;
+
+Drop table details2;
+
+data:
+Load [BM_Year]
+	,[Month]
+    ,TenderStatus
+    ,ProcurementMethod
+    ,CPV2
+    ,SUM([Award amount USD]) as M05 // Awarded value
+    ,Count(Distinct [Tender ID]) as M06 // Number of procedures
+    ,SUM([Contract amount USD]) as M02 // Contracted value
+    ,Count(Distinct IF(ContractStatus <> 'cancelled',IDContract)) as M04
+    ,Count(Distinct IF(AwardedFlag=1,[Tender ID])) as C02
+    ,Count(Distinct IF([Number of tenderers]=1,[Tender ID])) as C04_1
+    ,Count(Distinct [Tender ID]) as C04_2
+    ,Sum(IF([Number of tenderers]=1,[Award amount USD])) as C05 // % Singlebid Award amount: C05/M05
+    ,Sum([Number of tenderers]) as C06_SUM
+    ,Count([Number of tenderers]) as C06_COUNT
+    ,Median([Number of tenderers]) as C07
+	,Count(Distinct IF(ContractStatus <> 'cancelled' and [Contract milestone on time] = 1 ,IDContract)) as E03_1
+    ,Count(Distinct IF(ContractStatus <> 'cancelled' and [Contract milestones present] = 1 ,IDContract)) as E03_2
+    ,SUM(DaysFromCloseToAward) as E04_SUM
+    ,Count(DaysFromCloseToAward) as E04_COUNT
+    ,SUM([TenderPeriod]) as E06_SUM
+    ,Count([TenderPeriod]) as E06_COUNT
+    ,Count(Distinct IF(ContractStatus = 'cancelled',IDContract)) as E08_1
+    ,Count(Distinct IDContract) as E08_2
+    ,Count(Distinct IF(AwardedFlag=1 and [Overrun USD] > 0 ,IDAward)) as V03_1
+    ,Count(Distinct IF(AwardedFlag=1 ,IDAward)) as V03_2
+Resident details
+Group by [BM_Year],[Month],TenderStatus,ProcurementMethod,CPV2;
+
+Concatenate (data)
+Load [BM_Year]
+    ,Count(Distinct IDProcuringEntity) as M07 // Number of buyers
+    ,Count(Distinct IF(AwardedFlag=1,IDSupplier)) as M03 // Number of suppliers
+Resident details
+Group By [BM_Year];
+
+Drop table details;
+
+FOR Each scrBM_Year in FieldValueList('BM_Year')
+
+BM_$(scrBM_Year):
+Load 'CL' as country
+	,'CL' as country_tmp
+	,*
+Resident data
+Where [BM_Year] = $(scrBM_Year);
+
+IF NOT IsNull( FileSize('$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd')) THEN
+
+Concatenate (BM_$(scrBM_Year))
+Load *
+FROM [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd)
+Where NOT Exists(country_tmp,country);
+
+ENDIF;
+
+Drop field country_tmp;
+
+Store BM_$(scrBM_Year) into [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd);
+Drop table BM_$(scrBM_Year);
+
+NEXT
+
+Drop table data;

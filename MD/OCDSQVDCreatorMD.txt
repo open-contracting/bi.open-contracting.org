@@ -1,0 +1,1058 @@
+///$tab 0 Main
+SET ThousandSep=' ';
+SET DecimalSep=',';
+SET MoneyThousandSep=' ';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='# ##0,00 $;-# ##0,00 $';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET CreateSearchIndexOnReload=0;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+
+///$tab 1 Parameters
+// Paths to local Data
+Set scrDIC_QVD_PATH = 'lib://OCDSint/Moldova/01_QVDDB/01_Dictionary/';
+Set scrTRN_QVD_PATH = 'lib://OCDSint/Moldova/01_QVDDB/02_Transaction/';
+Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Moldova/01_QVDDB/03_LocalData/';
+Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Moldova/02_LocalFiles/';
+
+// Collection Id
+//Set scrCollectionId = 2157; //2114;//1613;1961;2023;
+
+// Variables for incremental load
+Let scrCurrentDate = Today(1);
+Set scrStartYear = 2019;
+Set scrStartCEYear = 2017; // for currency exchange
+Let scrEndYear = Year(scrCurrentDate);
+
+// API key for fixer.io (Currency Exchange)
+Set scrFixerAPIkey = '***';
+
+
+///$tab 2 Procedures
+// QVD file incremental updater
+SUB QVDupdate(TableName, KeyFieldName)
+  IF NoOfRows('$(TableName)') > 0 THEN
+    FOR Each scrQVDFile in FileList('$(TableName)????.qvd')
+      Concatenate ($(TableName))
+      Load
+           *
+      From  [$(scrQVDFile)] (qvd)
+      Where NOT Exists($(KeyFieldName));  
+    NEXT
+
+    FOR Each scrIterPeriod in FieldValueList('YearPeriod')
+      $(TableName)$(scrIterPeriod):
+      NoConcatenate
+      Load
+           *
+      Resident $(TableName)
+      Where YearPeriod = $(scrIterPeriod);  
+
+      Store $(TableName)$(scrIterPeriod) into $(TableName)$(scrIterPeriod).qvd (qvd);
+      TRACE Store file $(TableName)$(scrIterPeriod);
+      Drop Table $(TableName)$(scrIterPeriod);
+    NEXT
+
+    ELSE 
+      TRACE No data update;
+  ENDIF
+
+  Drop Table $(TableName);
+ENDSUB
+///$tab 3 Incremental load start
+// Get last update date
+Directory [$(scrDIC_QVD_PATH)];
+
+IF NOT IsNull(FileSize('OffsetTable.txt')) THEN
+	OffsetTable:
+    Load
+    	 UpdateDate
+    From OffsetTable.txt 
+    (txt, utf8, embedded labels, delimiter is '\t', msq);     
+    
+    Let scrUpdateDate = Peek('UpdateDate', -1, 'OffsetTable');
+    Drop Table OffsetTable;
+    
+    ELSE
+    	Let scrUpdateDate = scrStartYear;
+ENDIF
+
+TRACE Update data since $(scrUpdateDate);
+
+LIB CONNECT TO 'OCDSDB';
+///$tab 3.1 Tenders
+// Tenders
+
+Set scrFile = Tender;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+  Date(Floor(tender_date)) as TenderDate,
+  Date(Floor(tender_period_start_date)) as Date,
+  Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+  tender_date as UpdateDate,
+  ocid,
+  Text(procuring_entity_id) as IDProcuringEntity,
+  tender_id as [Tender id],
+  tender_id as IDTender,
+  tender_title as [Tender title],
+  tender_award_criteria as [Award criteria],
+  tender_description as [Tender description],
+  Num(tender_amount) as [Tender amount],
+  tender_currency as [Tender currency],
+  tender_status as TenderStatus,
+  tender_status_details as TenderStatusDetails,
+  Timestamp(award_period_start_date) as [Award period start date],
+  Timestamp(award_period_end_date) as [Award period end date],
+  Timestamp(tender_period_start_date) as [Tender period start date],
+  Timestamp(tender_period_end_date) as [Tender period end date],
+  Timestamp(auction_period_start_date) as [Auction period start date],
+  Timestamp(auction_period_end_date) as [Auction period end date],
+  Timestamp(enquiry_period_period_start_date) as [Enquiry period start date],
+  Timestamp(enquiry_period_period_end_date) as [Enquiry period end date],
+  Timestamp(contract_period_start_date) as [Contract period start date],
+  Timestamp(contract_period_end_date) as [Contract period end date],
+  Text(tender_classification_id) as [General classification id],
+  tender_classification_scheme as [General classification scheme],
+  tender_classification_description as [General classification description],
+  tender_classification_description&' - '&Text(tender_classification_id) as [General CPV classification],
+  procurement_method as ProcurementMethod,
+  procurement_method_details as ProcurementMethodDetails,
+  main_procurement_category as MainProcurementCategory,
+  Num(planning_budget_amount) as [Planning budget amount],
+  planning_budget_currency as [Planning budget currency]
+;
+SELECT 
+  data->>'date' as tender_date,
+  data->>'ocid' as ocid,
+  data#>>'{tender,id}' as tender_id, 
+  data#>>'{tender,title}' as tender_title,
+  data#>>'{tender,awardCriteria}' as tender_award_criteria,
+  data#>>'{tender,value,amount}' as tender_amount,
+  data#>>'{tender,value,currency}' as tender_currency,
+  data#>>'{tender,status}' as tender_status,
+  data#>>'{tender,awardPeriod,endDate}' as award_period_end_date,
+  data#>>'{tender,awardPeriod,startDate}' as award_period_start_date,
+  data#>>'{tender,description}' as tender_description,
+  data#>>'{tender,tenderPeriod,endDate}' as tender_period_end_date,
+  data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  data#>>'{tender,auctionPeriod,endDate}' as auction_period_end_date,
+  data#>>'{tender,auctionPeriod,startDate}' as auction_period_start_date,
+  data#>>'{tender,enquiryPeriod,endDate}' as enquiry_period_period_end_date,
+  data#>>'{tender,enquiryPeriod,startDate}' as enquiry_period_period_start_date,
+  data#>>'{tender,statusDetails}' as tender_status_details,
+  data#>>'{tender,classification,id}' as tender_classification_id,
+  data#>>'{tender,classification,scheme}' as tender_classification_scheme,
+  data#>>'{tender,classification,description}' as tender_classification_description,
+  data#>>'{tender,contractPeriod,endDate}' as contract_period_end_date,
+  data#>>'{tender,contractPeriod,startDate}' as contract_period_start_date,
+  data#>>'{tender,procuringEntity,id}' as procuring_entity_id,
+  data#>>'{tender,procurementMethod}' as procurement_method,
+  data#>>'{tender,procurementMethodDetails}' as procurement_method_details,
+  data#>>'{tender,mainProcurementCategory}' as main_procurement_category,
+  data#>>'{planning,budget,amount,amount}' as planning_budget_amount,
+  data#>>'{planning,budget,amount,currency}' as planning_budget_currency
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// WHERE 
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)' 
+FROM moldova
+WHERE data->>'date' > '$(scrUpdateDate)' 
+;
+
+IF NoOfRows('$(scrFile)') > 0 THEN
+  OffsetTable:
+  Load 
+      MaxString(UpdateDate) as UpdateDate
+  Resident $(scrFile);
+ENDIF
+
+CALL QVDupdate('$(scrFile)', 'IDTender');
+///$tab 3.2 Lots
+// Lots
+
+Set scrFile = Lot;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+  Load
+  tender_id as IDTender,
+  Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+  lot_id as [Lot id],
+  tender_id&'||'&lot_id as IDLot,
+  lot_title as [Lot title],
+  Num(lot_amount) as [Lot amount],
+  lot_currency as [Lot currency],
+  lot_status as LotStatus,
+  lot_description as [Lot description],
+  Timestamp(lot_contract_period_start_date) as [Lot contract period start date],
+  Timestamp(lot_contract_period_end_date) as [Lot contract period end date]
+;
+SELECT 
+  data#>>'{tender,id}' as tender_id, 
+  data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  data->>'date' as tender_date,
+  lots->>'id' as lot_id,
+  lots->>'title' as lot_title,
+  lots#>>'{value,amount}' as lot_amount,
+  lots#>>'{value,currency}' as lot_currency,
+  lots->>'status' as lot_status,
+  lots->>'description' as lot_description,
+  lots#>>'{contractPeriod,endDate}' as lot_contract_period_end_date,
+  lots#>>'{contractPeriod,startDate}' as lot_contract_period_start_date
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{tender,lots}')::jsonb) as lots ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{tender,lots}')::jsonb) as lots ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDLot');
+///$tab 3.3 Bids
+// Bids
+
+Set scrFile = Bid;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+  tender_id as IDTender,
+  Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+  bid_id as [Bid id],
+  tender_id&'||'&bid_id as IDBid,
+  Timestamp(bid_date) as [Bid date],
+  Num(bid_amount) as [Bid amount],
+  bid_currency as [Bid currency],
+  bid_status as BidStatus,
+  Text(bidder_id) as IDBidder,
+  tender_id&'||'&related_lots as IDLot
+;
+SELECT 
+    data#>>'{tender,id}' as tender_id, 
+    data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  	data->>'date' as tender_date,
+    details->>'id' as bid_id,
+    details->>'date' as bid_date,
+    details#>>'{value,amount}' as bid_amount,
+    details#>>'{value,currency}' as bid_currency,
+    details->>'status' as bid_status,
+    related_lots,
+    tenderers->>'id' as bidder_id   
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{bids,details}')::jsonb) as details ON true
+// LEFT JOIN jsonb_array_elements_text((details#>>'{relatedLots}')::jsonb) as related_lots ON true
+// LEFT JOIN jsonb_array_elements((details#>'{tenderers}')::jsonb) as tenderers ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date'  > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{bids,details}')::jsonb) as details ON true
+LEFT JOIN jsonb_array_elements_text((details#>>'{relatedLots}')::jsonb) as related_lots ON true
+LEFT JOIN jsonb_array_elements((details#>'{tenderers}')::jsonb) as tenderers ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDBid');
+///$tab 3.4 Awards
+// Awards
+
+Set scrFile = Award;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+    tender_id as IDTender,
+    Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+    Timestamp(tender_date) as TenderDate,
+    award_id as [Award id],
+    tender_id&'||'&award_id as IDAward,
+    tender_id&'||'&award_id&'||'&related_lots as IDAwardLot,
+    Timestamp(award_date) as [Award date],
+    Num(award_amount) as [Award amount],
+    award_currency as [Award currency],
+    award_status as AwardStatus,
+    award_status_details as AwardStatusDetails,
+    if(NOT IsNull(related_bid), tender_id&'||'&related_bid) as IDBid,
+    if(NOT IsNull(related_lots), tender_id&'||'&related_lots) as IDLot,
+    Text(supplier_id) as IDSupplier
+;
+SELECT 
+    data#>>'{tender,id}' as tender_id, 
+    data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+    data->>'date' as tender_date,
+    awards->>'id' as award_id,
+    awards->>'date' as award_date,
+    awards#>>'{value,amount}' as award_amount,
+    awards#>>'{value,currency}' as award_currency,
+    awards->>'status' as award_status,
+    awards->>'statusDetails' as award_status_details,
+    awards->>'relatedBid' as related_bid,
+    related_lots,
+    suppliers->>'id' as supplier_id
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+// LEFT JOIN jsonb_array_elements_text((awards#>'{relatedLots}')::jsonb) as related_lots ON true
+// LEFT JOIN jsonb_array_elements((awards#>'{suppliers}')::jsonb) as suppliers ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+LEFT JOIN jsonb_array_elements_text((awards#>'{relatedLots}')::jsonb) as related_lots ON true
+LEFT JOIN jsonb_array_elements((awards#>'{suppliers}')::jsonb) as suppliers ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDAwardLot');
+///$tab 3.5 Contracts
+// Contracts - No data currently
+/*
+Set scrFile = Contract;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+    tender_id as IDTender,
+    Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+    contract_id as [Contract id],
+    tender_id&'||'&contract_id as IDContract,
+    contract_status as ContractStatus,
+    contract_status_details as ContractStatusDetails],
+    tender_id&'||'&award_id as IDAward
+;
+SELECT 
+    data#>>'{tender,id}' as tender_id,
+    data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+    data->>'date' as tender_date,
+    contracts->>'id' as contract_id,
+    contracts->>'status' as contract_status,
+    contracts->>'statusDetails' as contract_status_details,
+    contracts->>'awardID' as award_id
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{contracts}')::jsonb) as contracts ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{contracts}')::jsonb) as contracts ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDContract');
+*/
+///$tab 3.6 Tender Items
+// Tender Items
+
+Set scrFile = TenderItem;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+      tender_id as IDTender,
+      Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+      item_id as [Item id],
+      tender_id&'||'&item_id as IDItem,
+      if(NOT IsNull(lot_id), tender_id&'||'&lot_id) as IDLot,
+      item_description as [Tender item description],
+      Text(item_classification_id) as [Tender item classification id],
+      item_classification_scheme as [Tender item classification scheme],
+      item_classification_description as [Tender item classification description],
+      item_classification_description&' - '&Text(item_classification_id) as [Tender item CPV classification],
+      Text(item_unit_id) as [Tender item unit id],
+      item_unit as [Tender item unit],
+      Num(item_quantity) as [Tender item quantity]
+;
+SELECT 
+    data#>>'{tender,id}' as tender_id,
+    data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+    data->>'date' as tender_date,
+    items->>'id' as item_id,
+    items#>>'{unit,id}' as item_unit_id,
+    items#>>'{unit,name}' as item_unit,
+    items->>'quantity' as item_quantity,
+    items->>'relatedLot' as lot_id,
+    items->>'description' as item_description,
+    items#>>'{classification,id}' as item_classification_id,
+    items#>>'{classification,scheme}' as item_classification_scheme,
+    items#>>'{classification,description}' as item_classification_description
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{tender,items}')::jsonb) as items ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{tender,items}')::jsonb) as items ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDItem');
+///$tab 3.7 Award Items
+// // Award Items - Old data
+
+// Set scrFile = AwardItem;
+
+// Directory [$(scrTRN_QVD_PATH)];
+
+// $(scrFile):
+// Load
+//       tender_id as IDTender,
+//       Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+//       tender_id&'||'&award_id as IDAward,
+//       item_id as [Award item id],
+//       tender_id&'||'&item_id as IDAwardItem,
+//       if(NOT IsNull(lot_id), tender_id&'||'&lot_id) as IDLot,
+//       item_description as [Award item description],
+//       Text(item_classification_id) as [Award item classification id],
+//       item_classification_scheme as [Award item classification scheme],
+//       item_classification_description as [Award item classification description],
+//       item_classification_description&' - '&Text(item_classification_id) as [Award item CPV classification],
+//       Text(item_unit_id) as [Award item unit id],
+//       item_unit as [Award item unit],
+//       Num(item_quantity) as [Award item quantity]
+// ;
+// SELECT 
+//     data#>>'{tender,id}' as tender_id,
+//     data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+//     data->>'date' as tender_date,
+//     awards->>'id' as award_id,
+//     items->>'id' as item_id,
+//     items#>>'{unit,id}' as item_unit_id,
+//     items#>>'{unit,name}' as item_unit,
+//     items->>'quantity' as item_quantity,
+//     items->>'relatedLot' as lot_id,
+//     items->>'description' as item_description,
+//     items#>>'{classification,id}' as item_classification_id,
+//     items#>>'{classification,scheme}' as item_classification_scheme,
+//     items#>>'{classification,description}' as item_classification_description
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+// INNER JOIN jsonb_array_elements((awards#>>'{items}')::jsonb) as items ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+// FROM moldova
+// INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+// INNER JOIN jsonb_array_elements((awards#>>'{items}')::jsonb) as items ON true
+// WHERE data->>'date' > '$(scrUpdateDate)'
+// ;
+
+// CALL QVDupdate('$(scrFile)', 'IDAwardItem');
+///$tab 3.8 Complaints
+//TT https://docs.google.com/document/d/1a3G46WIZy-rHv_XPncZb978klbzw6rEP3F-3616NENg
+
+Set scrFile = Complaint;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+  Load
+      tender_id as IDTender,
+      Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+      tender_id&'||'&complaint_id as IDComplaint,
+      Text(complaint_id) as [Complaint id],
+      Timestamp(Timestamp#(complaint_date, 'YYYYMMDDhhmmss')) as [Complaint date],
+      complaint_status as [Complaint status],
+      complaint_addressed_to as [Complaint addressed to],
+      complaint_classification_description as ObjectOfComplaint, 
+      complaint_complainer_name as Complainer
+;
+SELECT 
+  data#>>'{tender,id}' as tender_id,
+  data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  data->>'date' as tender_date,
+  complaints->>'addressedTo' as complaint_addressed_to,
+  complaints#>>'{classification,description}' as complaint_classification_description,
+  complaints#>>'{complainer,name}' as complaint_complainer_name,
+  complaints->>'date' as complaint_date,
+  complaints->>'id' as complaint_id,
+  complaints->>'status' as complaint_status
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{reviewProceedings,complaints}')::jsonb) as complaints ON true
+// WHERE 
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)' 
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{reviewProceedings,complaints}')::jsonb) as complaints ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDComplaint');
+
+Set scrFile = Review;
+
+$(scrFile):
+Load
+      IDTender,
+      YearPeriod,
+      IDComplaint,
+      [Review date],
+      [Review id],
+      IDTender&'||'&IDComplaint&'||'&[Review id] as IDReviewComplaint,
+      [Review resolution],
+      DecisionStatus,
+      SubjectOfDecision
+;
+Load
+      tender_id as IDTender,
+      Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+      tender_id&'||'&SubField(PurgeChar(if(Right(complaint_id, 1)=';', Left(complaint_id, Len(complaint_id)-1), complaint_id), ' '), ';') as IDComplaint,
+      Timestamp(Timestamp#(review_date, 'YYYYMMDDhhmmss')) as [Review date],
+      Text(review_id) as [Review id],
+      tender_id&'||'&review_id as IDReview,
+      review_resolution as [Review resolution],
+      review_status as DecisionStatus,
+      review_classification_description as SubjectOfDecision
+;
+SELECT 
+  data#>>'{tender,id}' as tender_id,
+  data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  data->>'date' as tender_date,
+  reviews->>'complaint' as complaint_id,
+  reviews->>'date' as review_date,
+  reviews->>'id' as review_id,
+  reviews->>'resolution' as review_resolution,
+  reviews->>'status' as review_status,
+  reviews#>>'{classification,description}' as review_classification_description
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{reviewProceedings,reviews}')::jsonb) as reviews ON true
+// WHERE 
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{reviewProceedings,reviews}')::jsonb) as reviews ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDReviewComplaint');
+///$tab 3.9 Auctions
+// Auctions
+
+Set scrFile = Auction;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+    tender_id as IDTender,
+    Year(Date(Alt(Floor(tender_period_start_date), Floor(tender_date)))) as YearPeriod,
+    Timestamp(tender_date) as TenderDate,
+    auction_id as [Auction id],
+    tender_id&'||'&auction_id as IDAuction,
+    auction_url as [Auction url],
+	tender_id&'||'&related_lot as IDLot,
+    Timestamp(auction_start_date) as [Auction start date],
+    Timestamp(auction_end_date) as [Auction end date]
+;
+SELECT 
+    data#>>'{tender,id}' as tender_id,
+	data#>>'{tender,tenderPeriod,startDate}' as tender_period_start_date,
+  	data->>'date' as tender_date,
+    auctions->>'id' as auction_id,
+	auctions->>'url' as auction_url,
+	auctions->>'relatedLot' as related_lot,
+    auctions#>>'{auctionPeriod,startDate}' as auction_start_date,
+	auctions#>>'{auctionPeriod,endDate}' as auction_end_date 
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{auctions,details}')::jsonb) as auctions ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+CALL QVDupdate('$(scrFile)', 'IDAuction');
+///$tab 3.10 Parties
+// Parties
+
+Set scrFile = Party;
+
+Directory [$(scrDIC_QVD_PATH)];
+
+$(scrFile):
+Load
+  Timestamp(tender_date) as TenderDate,
+  Text(party_id) as IDParty,
+  party_name as [Party name],
+  party_role as PartyRole,
+  Text(party_identifier) as [Party id],
+  Text(party_postal_code) as [Party postal code],
+  party_street_address as [Party street address],
+  party_legal_name as [Party legal name],
+  party_region as [Party region],
+  Text(party_region_id) as [Party region id],
+  party_country as [Party country],
+  Text(party_country_id) as [Party country id],
+  party_contact_point_name as [Party contact point name],
+  party_contact_point_email as [Party contact point email],
+  party_contact_point_telephone as [Party contact point telephone]
+;
+SELECT 
+    data->>'date' as tender_date,
+    parties->>'id' as party_id,
+    parties->>'name' as party_name,
+    parties#>>'{identifier,id}' as party_identifier,
+    parties#>>'{address,postalCode}' as party_postal_code,
+    parties#>>'{address,streetAddress}' as party_street_address,
+    parties#>>'{identifier,legalName}' as party_legal_name,
+    parties#>>'{address,addressDetails,region,description}' as party_region,
+    parties#>>'{address,addressDetails,region,id}' as party_region_id,
+    parties#>>'{address,addressDetails,country,description}' as party_country,
+    parties#>>'{address,addressDetails,country,id}' as party_country_id,
+    parties#>>'{contactPoint,name}' as party_contact_point_name,
+	parties#>>'{contactPoint,email}' as party_contact_point_email,
+	parties#>>'{contactPoint,telephone}' as party_contact_point_telephone,
+    party_role
+// FROM compiled_release c
+// INNER JOIN data d ON c.data_id = d.id
+// INNER JOIN jsonb_array_elements((data#>>'{parties}')::jsonb) as parties ON true
+// LEFT JOIN jsonb_array_elements_text((parties->>'roles')::jsonb) as party_role ON true
+// WHERE
+// collection_id = $(scrCollectionId) AND
+// data->>'date' > '$(scrUpdateDate)'
+FROM moldova
+INNER JOIN jsonb_array_elements((data#>>'{parties}')::jsonb) as parties ON true
+LEFT JOIN jsonb_array_elements_text((parties->>'roles')::jsonb) as party_role ON true
+WHERE data->>'date' > '$(scrUpdateDate)'
+;
+
+IF NoOfRows('$(scrFile)') > 0 THEN
+// ProcuringEntities  
+  ProcuringEntity_:
+  Load
+        TenderDate,
+        IDParty as IDProcuringEntity,
+        [Party name] as [Procuring entity name],
+        [Party id] as [Procuring entity id],
+        [Party postal code] as [Procuring entity postal code],
+        [Party street address] as [Procuring entity street address],
+        [Party legal name] as [Procuring entity legal name],
+        [Party region] as [Procuring entity region],
+        [Party region id] as [Procuring entity region id],
+        [Party country] as [Procuring entity country],
+        [Party country id] as [Procuring entity country id],
+        [Party contact point name] as [Procuring entity contact point name],
+  		[Party contact point email] as [Procuring entity contact point email],
+  		[Party contact point telephone] as [Procuring entity contact point telephone]
+  Resident $(scrFile)
+  Where Match(PartyRole, 'payer', 'buyer', 'procuringEntity');
+
+  IF NOT IsNull(FileSize('ProcuringEntity.qvd')) THEN
+      Concatenate(ProcuringEntity_)
+      Load
+           *
+      From ProcuringEntity.qvd (qvd);     
+  ENDIF
+
+  ProcuringEntity:
+  NoConcatenate
+  Load
+        IDProcuringEntity,
+        LastValue([Procuring entity name]) as [Procuring entity name],
+        LastValue([Procuring entity id]) as [Procuring entity id],
+        LastValue([Procuring entity postal code]) as [Procuring entity postal code],
+        LastValue([Procuring entity street address]) as [Procuring entity street address],
+        LastValue([Procuring entity legal name]) as [Procuring entity legal name],
+        LastValue([Procuring entity region]) as [Procuring entity region],
+        LastValue([Procuring entity region id]) as [Procuring entity region id],
+        LastValue([Procuring entity country]) as [Procuring entity country],
+        LastValue([Procuring entity country id]) as [Procuring entity country id],
+        LastValue([Procuring entity name])&' | '&LastValue([Procuring entity id]) as [Procuring entity],
+        LastValue([Procuring entity contact point name]) as [Procuring entity contact point name],
+  		LastValue([Procuring entity contact point email]) as [Procuring entity contact point email],
+  		LastValue([Procuring entity contact point telephone]) as [Procuring entity contact point telephone],
+        LastValue(TenderDate) as TenderDate
+  Resident ProcuringEntity_
+  Group By IDProcuringEntity
+  Order By TenderDate;
+
+  Drop Table ProcuringEntity_;
+
+  Store ProcuringEntity into ProcuringEntity.qvd (qvd);
+  TRACE Store file ProcuringEntity.qvd;
+  Drop Table ProcuringEntity;
+
+// Bidders
+  Bidder_:
+  Load
+        TenderDate,
+        IDParty as IDBidder,
+        [Party name] as [Bidder name],
+        [Party id] as [Bidder id],
+        [Party postal code] as [Bidder postal code],
+        [Party street address] as [Bidder street address],
+        [Party legal name] as [Bidder legal name],
+        [Party region] as [Bidder region],
+        [Party region id] as [Bidder region id],
+        [Party country] as [Bidder country],
+        [Party country id] as [Bidder country id],
+        [Party contact point name] as [Bidder contact point name],
+  		[Party contact point email] as [Bidder contact point email],
+  		[Party contact point telephone] as [Bidder contact point telephone]
+  Resident $(scrFile)
+  Where Match(PartyRole, 'supplier', 'tenderer', 'payee');
+
+  IF NOT IsNull(FileSize('Bidder.qvd')) THEN
+      Concatenate(Bidder_)
+      Load
+           *
+      From Bidder.qvd (qvd);     
+  ENDIF
+
+  Bidder:
+  NoConcatenate
+  Load
+        IDBidder,
+        LastValue([Bidder name]) as [Bidder name],
+        LastValue([Bidder id]) as [Bidder id],
+        LastValue([Bidder postal code]) as [Bidder postal code],
+        LastValue([Bidder street address]) as [Bidder street address],
+        LastValue([Bidder legal name]) as [Bidder legal name],
+        LastValue([Bidder region]) as [Bidder region],
+        LastValue([Bidder region id]) as [Bidder region id],
+        LastValue([Bidder country]) as [Bidder country],
+        LastValue([Bidder country id]) as [Bidder country id],
+        LastValue([Bidder name])&' | '&LastValue([Bidder id]) as Bidder,
+        LastValue([Bidder contact point name]) as [Bidder contact point name],
+  		LastValue([Bidder contact point email]) as [Bidder contact point email],
+  		LastValue([Bidder contact point telephone]) as [Bidder contact point telephone],
+        LastValue(TenderDate) as TenderDate
+  Resident Bidder_
+  Group By IDBidder
+  Order By TenderDate;
+
+  Drop Table Bidder_;
+
+  Store Bidder into Bidder.qvd (qvd);
+  TRACE Store file Bidder.qvd;
+  Drop Table Bidder;
+
+ENDIF
+
+Drop Table $(scrFile);
+
+///$tab 3.Z Incremental load end
+// Store last update date
+IF NoOfRows('OffsetTable') > 0 THEN
+	Directory [$(scrDIC_QVD_PATH)];
+    
+    Store OffsetTable into OffsetTable.txt (txt);
+	Drop Table OffsetTable;
+ENDIF
+///$tab 4 Currency Exchange
+// Currency Exchange
+
+Directory [$(scrTRN_QVD_PATH)];
+LIB CONNECT TO 'fixer.io';
+
+SUB GetCE(CUR1, CUR2, CEdate, CEtable)
+//		 'MDL','USD','2021-01-01','Currency'
+  
+  RestConnectorMasterTable:
+  SQL SELECT 
+      "success",
+      "timestamp",
+      "historical",
+      "base",
+      "date",
+      "__KEY_root",
+      (SELECT 
+          "$(CUR1)",
+          "__FK_rates"
+      FROM "rates" FK "__FK_rates")
+  FROM JSON (wrap on) "root" PK "__KEY_root"
+  WITH CONNECTION (
+  URL "https://data.fixer.io/api/$(CEdate)",
+  QUERY "access_key" "$(scrFixerAPIkey)",
+  QUERY "base" "$(CUR2)",
+  QUERY "symbols" "$(CUR1)"
+  );
+
+  Currency_:
+  LOAD	
+       $(CUR1) as Rate,
+       '$(CUR1)'&'$(CUR2)' as Currency,
+       [__FK_rates] AS [__KEY_root]
+  RESIDENT RestConnectorMasterTable
+  WHERE NOT IsNull([__FK_rates]);
+
+  LEFT JOIN (Currency_)
+  LOAD	
+      Date(Date#([date], 'YYYY-MM-DD')) as CEdate,
+      [__KEY_root]
+  RESIDENT RestConnectorMasterTable
+  WHERE NOT IsNull([__KEY_root]);
+
+  DROP TABLE RestConnectorMasterTable;
+  
+  Concatenate ($(CEtable))
+  Load
+  	   Rate,
+       Currency,
+       CEdate
+  Resident Currency_
+  Where NOT IsNull(CEdate);    
+  Drop Table Currency_;
+ENDSUB
+
+// Alternative procedure version
+// SUB GetCE(CUR1, CUR2, CEdate, CEtable)
+// //		 'MDL','USD','2021-01-01','Currency'
+
+//   Currency_:
+//   NoConcatenate
+//   LOAD
+//       Date(Date#(@1, 'DD-MM-YY')) as CEdate,
+//       @2 as Rate,
+//       '$(CUR1)'&'$(CUR2)' as Currency
+//   FROM [lib://WorldPopulation]
+//   (html, codepage is 28591, no labels, table is @2,
+//   url is 'https://fx-rate.net/historical/?c_input=$(CUR2)&cp_input=$(CUR1)&date_to_input=$(CEdate)&range_input=7');
+  
+//   Inner Join (Currency_)
+//   Load
+//   		Date('$(CEdate)') as CEdate
+//   AutoGenerate 1;  
+  
+//   Concatenate ($(CEtable))
+//   Load
+//   	 *
+//   Resident Currency_;    
+//   Drop Table Currency_;
+// ENDSUB
+
+Let scrIterPeriod = scrStartCEYear;
+
+DO 	
+	Let scrStartCE = Date(MakeDate(scrIterPeriod), 'YYYY-MM-DD');
+	Let scrEndCE = Date(RangeMin(YearEnd(MakeDate(scrIterPeriod)), scrCurrentDate), 'YYYY-MM-DD');
+    
+    Currency:
+    Load * Inline [
+    CEdate, Rate, Currency
+    ];
+
+	IF NOT IsNull(FileSize('Currency$(scrIterPeriod).qvd')) THEN
+      CurrencyLocal:
+      NoConcatenate
+      Load
+           *
+      From [Currency$(scrIterPeriod).qvd] (qvd);  
+
+      CurrencyTmp:
+      Load
+           Max(CEdate) as MaxCEdate
+      Resident CurrencyLocal;   
+      
+      Drop Table CurrencyLocal;
+
+      Let scrStartCE = Date(Peek('MaxCEdate', -1, 'CurrencyTmp') + 1, 'YYYY-MM-DD');
+      Drop Table CurrencyTmp;
+	ENDIF
+	
+    IF scrStartCE <= scrEndCE THEN
+    	TRACE Currency Exchange for period from $(scrStartCE) to $(scrEndCE);
+    ENDIF
+    
+    DO While scrStartCE <= scrEndCE
+		TRACE Currency Date = $(scrStartCE);
+    	CALL GetCE('MDL', 'USD', '$(scrStartCE)', 'Currency');
+        CALL GetCE('EUR', 'USD', '$(scrStartCE)', 'Currency');
+        CALL GetCE('EUR', 'MDL', '$(scrStartCE)', 'Currency');
+    	Let scrStartCE = Date(scrStartCE + 1, 'YYYY-MM-DD');
+    LOOP
+    
+    IF NoOfRows('Currency') > 0 THEN
+    	IF NOT IsNull(FileSize('Currency$(scrIterPeriod).qvd')) THEN
+          Concatenate (Currency)
+          Load Distinct
+               *
+          From [Currency$(scrIterPeriod).qvd] (qvd);    
+        ENDIF
+        
+        TRACE Store Currency for $(scrIterPeriod);
+        Store Currency into [Currency$(scrIterPeriod).qvd] (qvd);
+    ENDIF
+    
+    Drop Table Currency;
+
+	Let scrIterPeriod = scrIterPeriod + 1;
+LOOP While scrIterPeriod <= scrEndYear
+
+///$tab 5 Add Dictionaries
+Directory [$(scrDIC_QVD_PATH)];
+
+//Dictionary translations
+MultilangDictionaries:
+Load
+    F1 as Index,
+    F2 as Reference,
+    F3 as En,
+    F4 as Ro,
+    F5 as Ru,
+    F6 as attributeOf
+From [lib://WorldPopulation]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=420840489')
+Where F1 <> 'Index' AND Len(F1) > 0;
+
+Store MultilangDictionaries into MultilangDictionaries.qvd (qvd);
+Drop Table MultilangDictionaries;
+
+// Dictionary field name translations
+MultilangFieldNames:
+NoConcatenate
+Load
+    F1 as Index,
+    F3 as En,
+    F4 as Ro,
+    F5 as Ru
+FROM [lib://WorldPopulation]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=44525009')
+Where F1 <> 'Index' AND Len(F1) > 0;
+
+Store MultilangFieldNames into MultilangFieldNames.qvd (qvd);
+Drop Table MultilangFieldNames;
+
+//Labels translations
+Set Verbatim = 1;
+
+MultilangLabels:
+NoConcatenate
+// Load
+//     F1 as "Index",
+//     F3 as En,
+//     F4 as Ro,
+//     F5 as Ru
+// FROM [lib://WorldPopulation]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=1269059715')
+// Where F1 <> 'Index' AND Len(F1) > 0;
+// Load as xlsx for saving format of text descriptions
+Load
+    "Index",
+    En,
+    Ro,
+    Ru
+FROM [lib://WorldPopulation]
+(ooxml, embedded labels, table is MLLabels, 
+url is 'https://docs.google.com/spreadsheets/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/export?format=xlsx')
+Where Len(Index) > 0;
+
+Store MultilangLabels into MultilangLabels.qvd (qvd);
+Drop Table MultilangLabels;
+
+Set Verbatim = 0;
+
+//Sheet and object descriptions 
+MultilangHelp:
+NoConcatenate
+Load
+    "Index",
+    En,
+    Ro,
+    Ru
+FROM [lib://WorldPopulation]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=698193441')
+Where  Len("Index") > 0;
+
+Store MultilangHelp into MultilangHelp.qvd (qvd);
+Drop Table MultilangHelp;
+
+//Region map
+RegionMap:
+Load
+    F1 as FromRegion,
+    F2 as ToRegion
+From [lib://WorldPopulation]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=684936628')
+Where F1 <> 'FromField'  AND Len(F1) > 0;
+
+Store RegionMap into RegionMap.qvd (qvd);
+Drop Table RegionMap;
+
+//Procuring Entity Hierarchy
+HierarchyProcuringEntity:
+Load Distinct
+    Text('MD-IDNO-'&A) as IDProcuringEntity,
+    B&' | '&A as [Procuring entity],
+    B as [Procuring entity short name],
+    Text('MD-IDNO-'&C) as IDSecondaryAgency,
+    D&' | '&C as [Secondary agency],
+    D as [Secondary agency name],
+    Text('MD-IDNO-'&E) as IDHeadAgency,
+    F&' | '&E as [Head agency],
+    F as [Head agency name],
+    G as [Scope of the contracting authority],
+    H as [Legal form of the contracting authority]
+From [lib://WorldPopulation]
+(ooxml, explicit labels, header is 1 lines, table is Аркуш1,
+url is 'https://docs.google.com/spreadsheets/d/1iWszXsduwFFRArolIM9EBwWNXPFYGLrylU3fYXQ_owE/export?format=xlsx')
+Where Len(A) > 0;
+
+// HierarchyProcuringEntity:
+// Load Distinct
+//     Text('MD-IDNO-'&F1) as IDProcuringEntity,
+//     F2&' | '&F1 as [Procuring entity],
+//     F2 as [Procuring entity short name],
+//     Text('MD-IDNO-'&F3) as IDSecondaryAgency,
+//     F4&' | '&F3 as [Secondary agency],
+//     F4 as [Secondary agency name],
+//     Text('MD-IDNO-'&F5) as IDHeadAgency,
+//     F6&' | '&F5 as [Head agency],
+//     F6 as [Head agency name],
+//     F7 as [Scope of the contracting authority],
+//     F8 as [Legal form of the contracting authority]
+// From [lib://WorldPopulation]
+// (html, utf8, embedded labels, table is @1, 
+// url is 'https://docs.google.com/spreadsheets/d/1iWszXsduwFFRArolIM9EBwWNXPFYGLrylU3fYXQ_owE/gviz/tq?tqx=out:html&tq&gid=0')
+// Where NOT F1 Like '*DNO*'  AND Len(F1) > 0;
+
+Store HierarchyProcuringEntity into HierarchyProcuringEntity.qvd (qvd);
+Drop Table HierarchyProcuringEntity;
+
+//Excluded lots
+Directory [$(scrTRN_QVD_PATH)];
+
+ExcludedLots:
+Load Distinct
+    F1 as ExcludedIDLot
+From [lib://WorldPopulation]
+(html, utf8, embedded labels, table is @1, 
+url is 'https://docs.google.com/spreadsheets/u/1/d/1KchpTh0l24Ho793ekWiCmFyo5miIc9HjLosgdWSGxRU/gviz/tq?tqx=out:html&tq&gid=68784252')
+Where F1 <> 'IDLot'  AND Len(F1) > 0;
+
+Store ExcludedLots into ExcludedLots.qvd (qvd);
+Drop Table ExcludedLots;
+///$tab Exit Script
+Exit Script;

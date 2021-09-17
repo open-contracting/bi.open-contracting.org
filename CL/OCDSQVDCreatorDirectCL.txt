@@ -1,0 +1,1007 @@
+///$tab Main
+SET ThousandSep=' ';
+SET DecimalSep=',';
+SET MoneyThousandSep=' ';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='# ##0,00 ₴;-# ##0,00 ₴';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='uk-UA';
+SET CreateSearchIndexOnReload=1;
+SET MonthNames='січ.;лют.;бер.;квіт.;трав.;черв.;лип.;серп.;вер.;жовт.;лист.;груд.';
+SET LongMonthNames='січень;лютий;березень;квітень;травень;червень;липень;серпень;вересень;жовтень;листопад;грудень';
+SET DayNames='пн;вт;ср;чт;пт;сб;нд';
+SET LongDayNames='понеділок;вівторок;середа;четвер;пʼятниця;субота;неділя';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+///$tab 00. Paths
+REM Select environment (for data connection names)
+	0 = dev
+    1 = test
+    2 = prod
+;
+
+SET scrEnvironment = 2;
+
+IF scrEnvironment = 0 THEN 
+
+    // Paths to local Data //dev
+	SET scr_DC_path = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS CL';
+    
+    //Web Connection Name //dev
+    SET scrURLConnectionName = 'lib://karandin_test_CDB3_timberSpecies (rbcgrp_karandin)';
+    
+    //Data connection names //dev
+    SET RESTCurrencyConnection 	= 'fixer.io (rbcgrp_karandin)';
+    SET DBConnection			= 'OCDSDB - PostgreSQL (rbcgrp_karandin)';
+
+
+ELSEIF scrEnvironment = 1 THEN 
+
+    // Paths to local Data //test
+	SET scr_DC_path = 'lib://OCDSint/Chile';
+    
+    //Web Connection Name //test
+    SET scrURLConnectionName = 'lib://WorldPopulation';
+    
+    //Data connection names //test
+    SET RESTCurrencyConnection 	= 'fixer.io';
+	SET DBConnection			= 'OCDSDB';
+    
+ELSEIF scrEnvironment = 2 THEN
+
+    // Paths to local Data //prod
+	SET scr_DC_path = 'lib://OCDSint/Chile';
+
+    //Web Connection Name //prod
+    SET scrURLConnectionName = 'lib://WorldPopulation';
+    
+    //Data connection names //prod
+    SET RESTCurrencyConnection 	= 'fixer.io';
+	SET DBConnection			= 'OCDSDB';
+    
+ENDIF;
+
+//Direct
+
+LET scrDIC_QVD_PATH 			= scr_DC_path&'/Direct/01_QVDDB/01_Dictionary/';
+LET scrTRN_QVD_PATH				= scr_DC_path&'/Direct/01_QVDDB/02_Transaction/';
+// LET scrLOCAL_DATA_PATH_DR 		= scr_DC_path&'/Direct/01_QVDDB/03_LocalData/';
+// LET scrLOCAL_FILES_PATH_DR 		= scr_DC_path&'/Direct/02_LocalFiles/';
+
+///$tab 01. Parameters
+// Collection Id
+Set scrCollectionId = 1848;
+
+//Variables for load
+
+Set scrBatchSize		= 50000;
+Set scrMonthsInterval	= 3;
+
+// Variables for incremental load
+Let scrCurrentDate 		= Today(1);
+Set scrStartYear 		= 2019;
+Set scrStartCEYear 		= 2017; // for currency exchange
+Let scrEndYear 			= Year(scrCurrentDate);
+
+// API key for fixer.io (Currency Exchange)
+Set scrFixerAPIkey 		= '0d1a2b4ff0ff806a6b2357f3f02de1de';
+
+//Delimiter for concatenations (for UIDs)
+
+Set scrDemiliter		= '||';
+///$tab 02. Procedures
+// QVD file incremental updater
+
+REM Please note that directory of qvd files should be defined in script prior to calling this procedure;
+
+SUB QVDupdate(TableName, KeyFieldName, PeriodFieldName)
+
+  IF NoOfRows('$(TableName)') > 0 THEN
+  	
+    REM For each year-month, select loaded in the current batch procedures, 
+    then uppend it with procedures stored in qvd,
+    then store updated year-month qvd
+    ;
+  	FOR EACH itrPeriod in FieldValueList('$(PeriodFieldName)')
+    
+      //1. Select Procedures for the current iteration period
+      $(TableName)$(itrPeriod):
+      NoConcatenate
+      Load
+           *
+           ,[$(KeyFieldName)] AS [$(KeyFieldName)_loadControl]
+      Resident $(TableName)
+      Where [$(PeriodFieldName)] = $(itrPeriod);  
+      
+      //2. Concatenate Procedures for the current iteration period from the according qvd
+      IF NOT ISNULL(FILESIZE('$(TableName)$(itrPeriod).qvd')) THEN
+        Concatenate ($(TableName)$(itrPeriod))
+        Load
+           *
+        From  [$(TableName)$(itrPeriod).qvd] (qvd)
+        Where NOT Exists([$(KeyFieldName)_loadControl], [$(KeyFieldName)]);
+      ENDIF //IF NOT ISNULL(FILESIZE([$(TableName)$(itrPeriod).qvd])) THEN
+      
+      DROP FIELD [$(KeyFieldName)_loadControl] FROM [$(TableName)$(itrPeriod)];
+	  
+      //3. Store updated table for the current iteration period
+      Store $(TableName)$(itrPeriod) into $(TableName)$(itrPeriod).qvd (qvd);
+      TRACE Store file $(TableName)$(itrPeriod);
+      Drop Table $(TableName)$(itrPeriod);
+  
+    NEXT //FOR EACH itrPeriod in FieldValueList('$(PeriodFieldName)')
+
+    ELSE 
+      TRACE No data update;
+  ENDIF //IF NoOfRows('$(TableName)') > 0 THEN
+  
+  Drop Table $(TableName);
+ENDSUB;
+
+// // Offset Update and Loop Control
+
+// SUB OffsetUpdate(TableName)
+
+//     IF NoOfRows('$(TableName)') > 0 THEN
+//       OffsetTable:
+//       Load 
+//           MaxString(tender_datemodified) as UpdateDate
+//       Resident $(TableName);
+
+//       LET scrUpdateDateFormatted = PEEK('UpdateDate', 0, 'OffsetTable');
+
+//       RENAME TABLE OffsetTable TO OffsetTable_;
+
+//       OffsetTable:
+//       NoConcatenate
+//       LOAD DISTINCT tender_datemodifiedraw AS UpdateDate
+//       RESIDENT $(TableName)
+//       WHERE tender_datemodified = '$(scrUpdateDateFormatted)';
+
+//       DROP TABLE OffsetTable_;
+
+//       SET scrUpdateDateFormatted =;
+
+//       LET scrControlLastUpdateDate = PEEK('UpdateDate', 0, 'OffsetTable');
+
+//       IF scrControlLastUpdateDate = scrUpdateDate THEN 
+//         TRACE All records are loaded;
+//         TRACE Exiting loop;
+//         DROP TABLE OffsetTable;
+//         DROP TABLE $(TableName);
+//         EXIT DO;
+//       ENDIF;
+
+//     ENDIF;
+
+// ENDSUB;
+///$tab 03. Connect to DB
+LIB CONNECT TO '$(DBConnection)';
+///$tab 10. Incr Load Start
+DO
+
+Directory [$(scrDIC_QVD_PATH)];
+
+IF NOT IsNull(FileSize('OffsetTable.txt')) THEN
+	OffsetTable:
+    Load
+    	 UpdateDate
+    From OffsetTable.txt 
+    (txt, utf8, embedded labels, delimiter is '\t', msq);     
+    
+    Let scrUpdateDate = Peek('UpdateDate', -1, 'OffsetTable');
+    Drop Table OffsetTable;
+    
+    ELSE
+    	Let scrUpdateDate = scrStartYear;
+ENDIF
+
+TRACE Update data since $(scrUpdateDate);
+
+// LET scrLimitDate	= Alt(Date(MonthStart(AddMonths(TimeStamp('$(scrUpdateDate)'), '$(scrMonthsInterval)'), 'YYYY-MM-DD')), 
+// 					  Date(MonthStart(AddMonths(MakeDate('$(scrUpdateDate)'), '$(scrMonthsInterval)')), 'YYYY-MM-DD'));
+
+// TRACE Upper cap date is $(scrLimitDate); 
+///$tab 20. Tenders
+// Tenders
+
+Set scrFile = Tender;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+// 
+
+$(scrFile):
+Load
+	ocid
+    ,tender_date											as tender_datemodifiedraw
+	,Timestamp(tender_date)									as tender_datemodified
+    ,Date(Floor(tender_tender_period_start_date)) 			as tender_date
+    ,Year(Date(Floor(tender_tender_period_start_date))) 	as tender_year
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')	as tender_yearmonth
+
+	,tender_id										as tender_id
+    ,tender_title 									as tender_title
+    ,tender_description 							as tender_description
+    
+    ,tender_status									as tender_status
+	,tender_procurement_method						as tender_procurement_method
+	,tender_procurement_methoddetails				as tender_procurement_methoddetails
+    
+    ,Timestamp(tender_tender_period_start_date) 	as [tender_tender_period_start_date]
+    
+    ,tender_hasenquiries							as tender_hasenquiries
+    
+    ,Text(tender_procuring_entity_id)				as tender_procuring_entity_id
+	,tender_procuring_entity_name					as tender_procuring_entity_name
+    ,tender_procuring_entity_name&
+    	'$(scrDelimiterEntity)'&
+        	TEXT(tender_procuring_entity_id)		as tender_procuring_entity_name_id
+
+    
+    ,tender_relatedprocesses_uri					as tender_relatedprocesses_uri
+	,tender_relatedprocesses_title					as tender_relatedprocesses_title
+	,tender_relatedprocesses_identifier				as tender_relatedprocesses_identifier
+	,tender_relatedprocesses_scheme					as tender_relatedprocesses_scheme
+
+    ,tender_classification_id						as tender_classification_id
+	,tender_classification_scheme					as tender_classification_scheme
+	,tender_classification_description				as tender_classification_description
+
+;
+
+SELECT
+    d.data->>'ocid' 								as ocid,
+    d.data->>'date' 								as tender_date,
+
+    d.data#>>'{tender,id}' 							as tender_id, 
+    d.data#>>'{tender,title}' 						as tender_title,
+    d.data#>>'{tender,description}' 				as tender_description,
+
+    d.data#>>'{tender,status}' 						as tender_status,
+    d.data#>>'{tender,procurementMethod}' 			as tender_procurement_method,
+    d.data#>>'{tender,procurementMethodDetails}' 	as tender_procurement_methoddetails,
+
+    award->>'date' 									as tender_tender_period_start_date,
+
+    d.data#>>'{tender,hasEnquiries}' 				as tender_hasenquiries,
+    
+	d.data#>>'{tender,procuringEntity,id}' 			as tender_procuring_entity_id,
+	d.data#>>'{tender,procuringEntity,name}' 		as tender_procuring_entity_name
+    
+    ,rp->>'uri'										as tender_relatedprocesses_uri
+    ,rp->>'title'									as tender_relatedprocesses_title
+    ,rp->>'identifier'								as tender_relatedprocesses_identifier
+    ,rp->>'scheme'									as tender_relatedprocesses_scheme
+
+    
+    ,d.data#>>'{tender,classification,id}' 			as tender_classification_id
+	,d.data#>>'{tender,classification,scheme}' 		as tender_classification_scheme
+	,d.data#>>'{tender,classification,description}' as tender_classification_description
+
+FROM compiled_release c
+INNER JOIN data d ON c.data_id = d.id
+LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{relatedProcesses}')::jsonb) as rp on true
+
+WHERE
+collection_id = $(scrCollectionId)
+AND d.data->>'date' >= '$(scrUpdateDate)'
+AND award->>'date' >= '$(scrStartYear)'
+--AND d.data->>'date' < '$(scrLimitDate)'
+ORDER BY d.data->>'date' ASC
+limit $(scrBatchSize)
+;
+
+// Loop Break condition
+IF NoOfRows('$(scrFile)') > 0 THEN
+  OffsetTable:
+  Load 
+      MaxString(tender_datemodified) as UpdateDate
+  Resident $(scrFile);
+  
+  LET scrUpdateDateFormatted = PEEK('UpdateDate', 0, 'OffsetTable');
+  
+  RENAME TABLE OffsetTable TO OffsetTable_;
+  
+  OffsetTable:
+  NoConcatenate
+  LOAD DISTINCT tender_datemodifiedraw AS UpdateDate
+  RESIDENT $(scrFile)
+  WHERE tender_datemodified = '$(scrUpdateDateFormatted)';
+  
+  DROP TABLE OffsetTable_;
+  
+  SET scrUpdateDateFormatted =;
+  
+  LET scrControlLastUpdateDate = PEEK('UpdateDate', 0, 'OffsetTable');
+  
+  IF scrControlLastUpdateDate = scrUpdateDate THEN 
+  	TRACE All records are loaded;
+    TRACE Exiting loop;
+    DROP TABLE OffsetTable;
+    DROP TABLE $(scrFile);
+    EXIT DO;
+  ENDIF;
+  
+ENDIF;
+
+// Update last loaded date
+// CALL OffsetUpdate('$(scrFile)');
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 20.1 TenderAward
+// TenderAwards
+
+Set scrFile = TenderAward;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+	ocid
+    ,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+    ,Date(Floor(tender_tender_period_start_date)) 				as tender_date
+    ,Year(Date(Floor(tender_tender_period_start_date))) 		as tender_year
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+
+	,tender_id													as tender_id
+    ,tender_title 												as tender_title
+    ,tender_description 										as tender_description
+    
+    ,tender_status												as tender_status
+	,tender_procurement_method									as tender_procurement_method
+	,tender_procurement_methoddetails							as tender_procurement_methoddetails
+    
+    ,Timestamp(tender_tender_period_start_date) 				as [tender_tender_period_start_date]
+    
+    ,tender_hasenquiries										as tender_hasenquiries
+    
+    ,Text(tender_procuring_entity_id)							as tender_procuring_entity_id
+	,tender_procuring_entity_name								as tender_procuring_entity_name
+    ,tender_procuring_entity_name&
+    	'$(scrDelimiterEntity)'&
+        	TEXT(tender_procuring_entity_id)					as tender_procuring_entity_name_id
+
+    
+    ,tender_relatedprocesses_uri								as tender_relatedprocesses_uri
+	,tender_relatedprocesses_title								as tender_relatedprocesses_title
+	,tender_relatedprocesses_identifier							as tender_relatedprocesses_identifier
+	,tender_relatedprocesses_scheme								as tender_relatedprocesses_scheme
+
+    ,tender_classification_id									as tender_classification_id
+	,tender_classification_scheme								as tender_classification_scheme
+	,tender_classification_description							as tender_classification_description
+	,IF(NOT ISNULL(award_id),
+    	tender_id&'$(scrDemiliter)'&award_id)					as award_id
+	,Timestamp(award_date)										as award_datetime
+    ,Date(FLOOR(award_date))									as award_date
+	,award_description											as award_description
+	,award_title												as award_title
+	,award_status												as award_status
+	,Num(award_amount)											as award_amount
+    ,Num(award_amountgross)										as award_amountgross
+	,award_currency												as award_currency
+	,award_unitofaccount										as award_unitofaccount
+;
+SQL SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId) 
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT 
+    d.data->>'ocid' 								as ocid,
+    d.data->>'date' 								as tender_date,
+
+    d.data#>>'{tender,id}' 							as tender_id, 
+    d.data#>>'{tender,title}' 						as tender_title,
+    d.data#>>'{tender,description}' 				as tender_description,
+
+    d.data#>>'{tender,status}' 						as tender_status,
+    d.data#>>'{tender,procurementMethod}' 			as tender_procurement_method,
+    d.data#>>'{tender,procurementMethodDetails}' 	as tender_procurement_methoddetails,
+
+    award->>'date' 									as tender_tender_period_start_date,
+
+    d.data#>>'{tender,hasEnquiries}' 				as tender_hasenquiries,
+    
+	d.data#>>'{tender,procuringEntity,id}' 			as tender_procuring_entity_id,
+	d.data#>>'{tender,procuringEntity,name}' 		as tender_procuring_entity_name
+    
+    ,rp->>'uri'										as tender_relatedprocesses_uri
+    ,rp->>'title'									as tender_relatedprocesses_title
+    ,rp->>'identifier'								as tender_relatedprocesses_identifier
+    ,rp->>'scheme'									as tender_relatedprocesses_scheme
+
+    
+    ,d.data#>>'{tender,classification,id}' 			as tender_classification_id
+	,d.data#>>'{tender,classification,scheme}' 		as tender_classification_scheme
+	,d.data#>>'{tender,classification,description}' as tender_classification_description
+
+	,award->>'id' 									as award_id,
+    award->>'date' 									as award_date,
+	award->>'description' 							as award_description,
+	award->>'title' 								as award_title,
+	award->>'status' 								as award_status,
+    award#>>'{value,amount}' 						as award_amount,
+    award#>>'{value,amountGross}' 					as award_amountgross,
+    award#>>'{value,currency}' 						as award_currency,
+	award#>>'{value,unitOfAccount}'					as award_unitofaccount
+FROM releases_limited c
+INNER JOIN data d ON c.data_id = d.id
+LEFT JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as award ON true
+LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{relatedProcesses}')::jsonb) as rp on true
+
+
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 21. Parties
+// Parties
+
+Set scrFile = Party;
+
+Directory [$(scrDIC_QVD_PATH)];
+
+$(scrFile):
+Load
+  tender_date							as tender_date
+  ,TEXT(party_id)						as party_id
+  ,party_name							as party_name
+  ,party_address_region					as party_address_region
+  ,party_address_country				as party_address_country
+  ,party_address_streetaddress			as party_address_streetaddress
+  ,TEXT(party_identifier_id)			as party_identifier_id
+  ,party_identifier_scheme				as party_identifier_scheme
+  ,party_identifier_legalname			as party_identifier_legalname
+  ,party_contactpoint_name				as party_contactpoint_name
+  ,party_contactpoint_email				as party_contactpoint_email
+  ,party_contactpoint_telephone			as party_contactpoint_telephone
+  ,party_contactpoint_faxnumber			as party_contactpoint_faxnumber
+  ,TEXT(party_additionalidentifier_id)	as party_additionalidentifier_id
+  ,party_additionalidentifier_uri		as party_additionalidentifier_uri
+  ,party_additionalidentifier_scheme	as party_additionalidentifier_scheme
+  ,party_additionalidentifier_legalname	as party_additionalidentifier_legalname
+  ,party_role							as party_role
+  ,party_name&
+  	'$(scrDelimiterEntity)'&
+    	TEXT(party_id)					as party_name_id
+
+;
+SQL  SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId)
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT
+	d.data->>'date' 						as tender_date,
+	parties->>'id' 							as party_id,
+    parties->>'name' 						as party_name,
+	parties#>>'{address,region}' 			as party_address_region,
+    parties#>>'{address,country}' 			as party_address_country,
+    parties#>>'{address,streetAddress}' 	as party_address_streetaddress,
+    parties#>>'{identifier,id}' 			as party_identifier_id,
+    parties#>>'{identifier,scheme}' 		as party_identifier_scheme,
+    parties#>>'{identifier,legalName}' 		as party_identifier_legalname,
+    parties#>>'{contactPoint,name}' 		as party_contactpoint_name,
+    parties#>>'{contactPoint,email}' 		as party_contactpoint_email,
+    parties#>>'{contactPoint,telephone}' 	as party_contactpoint_telephone,
+    parties#>>'{contactPoint,faxNumber}' 	as party_contactpoint_faxnumber,
+    party_addid->>'id'						as party_additionalidentifier_id,
+    party_addid->>'uri'						as party_additionalidentifier_uri,
+    party_addid->>'scheme'					as party_additionalidentifier_scheme,
+    party_addid->>'legalName'				as party_additionalidentifier_legalname,
+    party_role								as party_role
+FROM releases_limited c
+INNER JOIN data d ON c.data_id = d.id
+INNER JOIN jsonb_array_elements((data#>>'{parties}')::jsonb) as parties ON true
+LEFT JOIN jsonb_array_elements_text((parties->>'roles')::jsonb) as party_role ON true
+LEFT JOIN jsonb_array_elements((parties#>>'{additionalIdentifiers}')::jsonb) as party_addid ON true
+) as layered_table_for_qlik
+;
+
+
+IF NoOfRows('$(scrFile)') > 0 THEN
+// ProcuringEntities  
+SET scrParty = 'procuringEntity';
+
+  [$(scrParty)_]:
+  Load
+    tender_date
+    ,party_id								as [$(scrParty)_id]
+    ,party_name								as [$(scrParty)_name]
+    ,party_address_region					as [$(scrParty)_address_region]
+    ,party_address_country					as [$(scrParty)_address_country]
+    ,party_address_streetaddress			as [$(scrParty)_address_streetaddress]
+    ,party_identifier_id					as [$(scrParty)_identifier_id]
+    ,party_identifier_scheme				as [$(scrParty)_identifier_scheme]
+    ,party_identifier_legalname				as [$(scrParty)_identifier_legalname]
+    ,party_contactpoint_name				as [$(scrParty)_contactpoint_name]
+    ,party_contactpoint_email				as [$(scrParty)_contactpoint_email]
+    ,party_contactpoint_telephone			as [$(scrParty)_contactpoint_telephone]
+    ,party_contactpoint_faxnumber			as [$(scrParty)_contactpoint_faxnumber]
+    ,party_additionalidentifier_id			as [$(scrParty)_additionalidentifier_id]
+    ,party_additionalidentifier_uri			as [$(scrParty)_additionalidentifier_uri]
+    ,party_additionalidentifier_scheme		as [$(scrParty)_additionalidentifier_scheme]
+    ,party_additionalidentifier_legalname	as [$(scrParty)_additionalidentifier_legalname]
+	,party_name_id							as [$(scrParty)_name_id]
+  Resident $(scrFile)
+  Where Match(party_role, 'buyer', 'procuringEntity');
+
+  IF NOT IsNull(FileSize('$(scrParty).qvd')) THEN
+      Concatenate([$(scrParty)_])
+      Load
+           *
+      From $(scrParty).qvd (qvd);     
+  ENDIF
+
+  [$(scrParty)]:
+  NoConcatenate
+  Load
+  		[$(scrParty)_name_id]
+        ,LASTVALUE([$(scrParty)_id]) AS [$(scrParty)_id]
+		,LASTVALUE([$(scrParty)_name]) AS [$(scrParty)_name]
+		,LASTVALUE([$(scrParty)_address_region]) AS [$(scrParty)_address_region]
+		,LASTVALUE([$(scrParty)_address_country]) AS [$(scrParty)_address_country]
+		,LASTVALUE([$(scrParty)_address_streetaddress]) AS [$(scrParty)_address_streetaddress]
+		,LASTVALUE([$(scrParty)_identifier_id]) AS [$(scrParty)_identifier_id]
+		,LASTVALUE([$(scrParty)_identifier_scheme]) AS [$(scrParty)_identifier_scheme]
+		,LASTVALUE([$(scrParty)_identifier_legalname]) AS [$(scrParty)_identifier_legalname]
+		,LASTVALUE([$(scrParty)_contactpoint_name]) AS [$(scrParty)_contactpoint_name]
+		,LASTVALUE([$(scrParty)_contactpoint_email]) AS [$(scrParty)_contactpoint_email]
+		,LASTVALUE([$(scrParty)_contactpoint_telephone]) AS [$(scrParty)_contactpoint_telephone]
+		,LASTVALUE([$(scrParty)_contactpoint_faxnumber]) AS [$(scrParty)_contactpoint_faxnumber]
+		,LASTVALUE([$(scrParty)_additionalidentifier_id]) AS [$(scrParty)_additionalidentifier_id]
+		,LASTVALUE([$(scrParty)_additionalidentifier_uri]) AS [$(scrParty)_additionalidentifier_uri]
+		,LASTVALUE([$(scrParty)_additionalidentifier_scheme]) AS [$(scrParty)_additionalidentifier_scheme]
+		,LASTVALUE([$(scrParty)_additionalidentifier_legalname]) AS [$(scrParty)_additionalidentifier_legalname]
+		,LASTVALUE(tender_date) AS tender_date
+  Resident [$(scrParty)_]
+  Group By [$(scrParty)_name_id]
+  Order By tender_date;
+
+  Drop Table [$(scrParty)_];
+
+  Store [$(scrParty)] into [$(scrParty).qvd] (qvd);
+  TRACE Store file $(scrParty).qvd;
+  Drop Table [$(scrParty)];
+  
+// Suppliers
+SET scrParty = 'supplier';
+
+  [$(scrParty)_]:
+  Load
+    tender_date
+    ,party_id								as [$(scrParty)_id]
+    ,party_name								as [$(scrParty)_name]
+    ,party_address_region					as [$(scrParty)_address_region]
+    ,party_address_country					as [$(scrParty)_address_country]
+    ,party_address_streetaddress			as [$(scrParty)_address_streetaddress]
+    ,party_identifier_id					as [$(scrParty)_identifier_id]
+    ,party_identifier_scheme				as [$(scrParty)_identifier_scheme]
+    ,party_identifier_legalname				as [$(scrParty)_identifier_legalname]
+    ,party_contactpoint_name				as [$(scrParty)_contactpoint_name]
+    ,party_contactpoint_email				as [$(scrParty)_contactpoint_email]
+    ,party_contactpoint_telephone			as [$(scrParty)_contactpoint_telephone]
+    ,party_contactpoint_faxnumber			as [$(scrParty)_contactpoint_faxnumber]
+    ,party_additionalidentifier_id			as [$(scrParty)_additionalidentifier_id]
+    ,party_additionalidentifier_uri			as [$(scrParty)_additionalidentifier_uri]
+    ,party_additionalidentifier_scheme		as [$(scrParty)_additionalidentifier_scheme]
+    ,party_additionalidentifier_legalname	as [$(scrParty)_additionalidentifier_legalname]
+    ,party_name_id							as [$(scrParty)_name_id]
+  Resident $(scrFile)
+  Where Match(party_role, 'supplier');
+
+  IF NOT IsNull(FileSize('$(scrParty).qvd')) THEN
+      Concatenate([$(scrParty)_])
+      Load
+           *
+      From $(scrParty).qvd (qvd);     
+  ENDIF
+
+  [$(scrParty)]:
+  NoConcatenate
+  Load
+  		[$(scrParty)_name_id]
+        ,LASTVALUE([$(scrParty)_id]) AS [$(scrParty)_id]
+		,LASTVALUE([$(scrParty)_name]) AS [$(scrParty)_name]
+		,LASTVALUE([$(scrParty)_address_region]) AS [$(scrParty)_address_region]
+		,LASTVALUE([$(scrParty)_address_country]) AS [$(scrParty)_address_country]
+		,LASTVALUE([$(scrParty)_address_streetaddress]) AS [$(scrParty)_address_streetaddress]
+		,LASTVALUE([$(scrParty)_identifier_id]) AS [$(scrParty)_identifier_id]
+		,LASTVALUE([$(scrParty)_identifier_scheme]) AS [$(scrParty)_identifier_scheme]
+		,LASTVALUE([$(scrParty)_identifier_legalname]) AS [$(scrParty)_identifier_legalname]
+		,LASTVALUE([$(scrParty)_contactpoint_name]) AS [$(scrParty)_contactpoint_name]
+		,LASTVALUE([$(scrParty)_contactpoint_email]) AS [$(scrParty)_contactpoint_email]
+		,LASTVALUE([$(scrParty)_contactpoint_telephone]) AS [$(scrParty)_contactpoint_telephone]
+		,LASTVALUE([$(scrParty)_contactpoint_faxnumber]) AS [$(scrParty)_contactpoint_faxnumber]
+		,LASTVALUE([$(scrParty)_additionalidentifier_id]) AS [$(scrParty)_additionalidentifier_id]
+		,LASTVALUE([$(scrParty)_additionalidentifier_uri]) AS [$(scrParty)_additionalidentifier_uri]
+		,LASTVALUE([$(scrParty)_additionalidentifier_scheme]) AS [$(scrParty)_additionalidentifier_scheme]
+		,LASTVALUE([$(scrParty)_additionalidentifier_legalname]) AS [$(scrParty)_additionalidentifier_legalname]
+		,LASTVALUE(tender_date) AS tender_date
+  Resident [$(scrParty)_]
+  Group By [$(scrParty)_name_id]
+  Order By tender_date;
+
+  Drop Table [$(scrParty)_];
+
+  Store [$(scrParty)] into [$(scrParty).qvd] (qvd);
+  TRACE Store file $(scrParty).qvd;
+  Drop Table [$(scrParty)];
+  
+ENDIF; //IF NoOfRows('$(scrFile)') > 0 THEN
+
+Drop Table $(scrFile);
+///$tab 22. Awards
+// Awards
+
+Set scrFile = Award;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+   tender_id													as tender_id
+    //,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+	,Timestamp(tender_tender_period_end_date)					as tender_tender_period_end_date
+	,Timestamp(tender_tender_period_start_date)					as tender_tender_period_start_date
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+	,IF(NOT ISNULL(award_id),
+    	tender_id&'$(scrDemiliter)'&award_id)					as award_id
+	,Timestamp(award_date)										as award_datetime
+    ,Date(FLOOR(award_date))									as award_date
+	,award_description											as award_description
+	,award_title												as award_title
+	,award_status												as award_status
+	,Num(award_amount)											as award_amount
+    ,Num(award_amountgross)										as award_amountgross
+	,award_currency												as award_currency
+	,award_unitofaccount										as award_unitofaccount
+// 	,Text(supplier_id)											as supplier_id
+// 	,supplier_name												as supplier_name
+;
+SQL SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId) 
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT 
+    d.data#>>'{tender,id}' 						as tender_id, 
+    d.data#>>'{tender,tenderPeriod,endDate}' 	as tender_tender_period_end_date,
+    awards->>'date' 							as tender_tender_period_start_date,
+    d.data->>'date' 							as tender_date,
+    awards->>'id' 								as award_id,
+    awards->>'date' 							as award_date,
+	awards->>'description' 						as award_description,
+	awards->>'title' 							as award_title,
+	awards->>'status' 							as award_status,
+    awards#>>'{value,amount}' 					as award_amount,
+    awards#>>'{value,amountGross}' 				as award_amountgross,
+    awards#>>'{value,currency}' 				as award_currency,
+	awards#>>'{value,unitOfAccount}'			as award_unitofaccount
+    --,suppliers->>'id' 							as supplier_id
+	--,suppliers->>'name' 						as supplier_name
+FROM releases_limited c
+INNER JOIN data d ON c.data_id = d.id
+INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+--LEFT JOIN jsonb_array_elements((awards#>'{suppliers}')::jsonb) as suppliers ON true
+
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 22.1 AwardSuppliers
+// AwardSuppliers
+
+Set scrFile = AwardSuppliers;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+   tender_id													as tender_id
+    //,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+// 	,Timestamp(tender_tender_period_end_date)					as tender_tender_period_end_date
+	,Timestamp(tender_tender_period_start_date)					as tender_tender_period_start_date
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+	,IF(NOT ISNULL(award_id),
+    	tender_id&'$(scrDemiliter)'&award_id)					as award_id
+	,Timestamp(award_date)										as award_date
+	,Text(supplier_id)											as supplier_id
+	,supplier_name												as supplier_name
+    ,supplier_name&
+    	'$(scrDelimiterEntity)'&
+        	TEXT(supplier_id)									as award_supplier_name_id
+
+;
+SQL SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId) 
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT 
+    d.data#>>'{tender,id}' 						as tender_id, 
+    --d.data#>>'{tender,tenderPeriod,endDate}' 	as tender_tender_period_end_date,
+    awards->>'date' 							as tender_tender_period_start_date,
+    d.data->>'date' 							as tender_date,
+    awards->>'id' 								as award_id,
+    awards->>'date' 							as award_date
+    ,suppliers->>'id' 							as supplier_id
+	,suppliers->>'name' 						as supplier_name
+FROM releases_limited c
+INNER JOIN data d ON c.data_id = d.id
+INNER JOIN jsonb_array_elements((data#>>'{awards}')::jsonb) as awards ON true
+LEFT JOIN jsonb_array_elements((awards#>'{suppliers}')::jsonb) as suppliers ON true
+
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 23. AwardItems
+// AwardItems
+
+Set scrFile = AwardItems;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+// 
+$(scrFile):
+Load
+   tender_id													as tender_id
+    //,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+	//,Timestamp(tender_tender_period_end_date)					as tender_tender_period_end_date
+	,Timestamp(tender_tender_period_start_date)					as tender_tender_period_start_date
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+    ,IF(NOT ISNULL(award_id),
+    	tender_id&'$(scrDemiliter)'&award_id)					as award_id
+	,IF(NOT ISNULL(item_id),
+    	tender_id&'$(scrDemiliter)'&item_id)					as item_id
+    ,Num(item_quantity)											as item_quantity
+	,item_description											as item_description
+	,item_unit_name												as item_unit_name
+    ,Num(item_unit_amount)										as item_unit_amount
+	,item_unit_currency											as item_unit_currency
+	,item_unit_unitofaccount									as item_unit_unitofaccount
+    ,award_status												as award_status
+	,IF(ISNULL(award_amount), 1)								as flag_no_award_amount
+	,IF(ISNULL(award_currency), 1)								as flag_no_award_currency
+
+;
+SQL SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId) 
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize))
+SELECT 
+        d.data#>>'{tender,id}' 						as tender_id, 
+        --d.data#>>'{tender,tenderPeriod,endDate}' 	as tender_tender_period_end_date,
+    	award->>'date' 								as tender_tender_period_start_date,
+        d.data->>'date' 							as tender_date
+		,award->>'id' 								as award_id
+		,item->>'id' 								as item_id
+        ,item->>'quantity' 							as item_quantity
+		,item->>'description' 						as item_description
+		,item#>>'{unit,name}' 						as item_unit_name
+		,item#>>'{unit,value,amount}' 				as item_unit_amount
+		,item#>>'{unit,value,currency}' 			as item_unit_currency
+		,item#>>'{unit,value,unitOfAccount}' 		as item_unit_unitofaccount
+        ,award->>'status' 							as award_status
+    	,award#>>'{value,amount}' 					as award_amount
+    	,award#>>'{value,currency}' 				as award_currency
+FROM releases_limited c 
+INNER JOIN data d ON c.data_id = d.id
+
+INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+LEFT JOIN LATERAL jsonb_array_elements((award#>>'{items}')::jsonb) AS item on true
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+
+///$tab 24. Contracts
+// Contracts
+
+Set scrFile = Contract;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+$(scrFile):
+Load
+   tender_id													as tender_id
+    //,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+	//,Timestamp(tender_tender_period_end_date)					as tender_tender_period_end_date
+	,Timestamp(tender_tender_period_start_date)					as tender_tender_period_start_date
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+    ,IF(NOT ISNULL(contract_id),
+    	tender_id&'$(scrDemiliter)'&contract_id)				as contract_id
+	,IF(NOT ISNULL(award_id),
+    	tender_id&'$(scrDemiliter)'&award_id)					as award_id
+    ,Date(Floor(tender_tender_period_start_date))				as award_date
+	,contract_description										as contract_description
+	,contract_title												as contract_title
+	,contract_status											as contract_status
+	,Num(contract_amount)										as contract_amount
+    ,Num(contract_amountgross)									as contract_amountgross
+	,contract_currency											as contract_currency
+	,contract_unitofaccount										as contract_unitofaccount
+    ,Timestamp(contract_datecreated)							as contract_datecreated
+    ,Timestamp(contract_period_enddate)							as contract_period_enddate
+    ,Timestamp(contract_period_startdate)						as contract_period_startdate
+    ,award_award_id												as award_award_id
+    ,IF(award_award_id <> award_id, 1)							as flag_no_award
+
+
+;
+SQL SELECT * FROM( WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId) 
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT 
+    d.data#>>'{tender,id}' 						as tender_id, 
+    --d.data#>>'{tender,tenderPeriod,endDate}' 	as tender_tender_period_end_date,
+    award->>'date' 								as tender_tender_period_start_date,
+    award->>'id' 								as award_award_id,
+    d.data->>'date' 							as tender_date,
+    contracts->>'id' 							as contract_id,
+	contracts->>'awardID' 						as award_id,
+	contracts->>'status' 						as contract_status,
+    contracts->>'dateCreated' 					as contract_datecreated,
+	contracts->>'description' 					as contract_description,
+	contracts->>'title' 						as contract_title,
+    contracts#>>'{value,amount}' 				as contract_amount,
+    contracts#>>'{value,amountGross}' 			as contract_amountgross,
+    contracts#>>'{value,currency}' 				as contract_currency,
+	contracts#>>'{value,unitOfAccount}'			as contract_unitofaccount,
+	contracts#>>'{period,endDate}' 				as contract_period_enddate,
+	contracts#>>'{period,startDate}'			as contract_period_startdate
+FROM releases_limited c
+INNER JOIN data d ON c.data_id = d.id
+LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+INNER JOIN jsonb_array_elements((data#>>'{contracts}')::jsonb) as contracts ON true
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 25. ContractItems
+// ContractItems
+
+Set scrFile = ContractItems;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+// 
+$(scrFile):
+Load
+   tender_id													as tender_id
+    //,tender_date												as tender_datemodifiedraw
+	,Timestamp(tender_date)										as tender_datemodified
+	//,Timestamp(tender_tender_period_end_date)					as tender_tender_period_end_date
+	,Timestamp(tender_tender_period_start_date)					as tender_tender_period_start_date
+    ,Year(Date(Floor(tender_tender_period_start_date)))&
+	Num(Month(Floor(tender_tender_period_start_date)),'00')		as tender_yearmonth
+    ,IF(NOT ISNULL(contract_id),
+    	tender_id&'$(scrDemiliter)'&contract_id)				as contract_id
+	,IF(NOT ISNULL(item_id),
+    	tender_id&'$(scrDemiliter)'&item_id)					as item_id
+    ,Num(item_quantity)											as item_quantity
+	,item_description											as item_description
+	,item_unit_name												as item_unit_name
+    ,Num(item_unit_amount)										as item_unit_amount
+	,item_unit_currency											as item_unit_currency
+	,item_unit_unitofaccount									as item_unit_unitofaccount
+;
+SQL SELECT * FROM( 
+WITH releases_limited AS (
+  SELECT data_id,
+		 collection_id
+  from compiled_release 
+  INNER JOIN data d ON data_id = d.id
+  LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+  WHERE
+  collection_id = $(scrCollectionId)  
+  AND d.data->>'date' >= '$(scrUpdateDate)'
+  AND award->>'date' >= '$(scrStartYear)'
+  ORDER BY d.data->>'date' ASC
+  LIMIT $(scrBatchSize) )
+SELECT 
+        d.data#>>'{tender,id}' 						as tender_id, 
+        --d.data#>>'{tender,tenderPeriod,endDate}' 	as tender_tender_period_end_date,
+    	award->>'date' 								as tender_tender_period_start_date,
+        d.data->>'date' 							as tender_date
+		,contracts->>'id' 							as contract_id
+		,item->>'id' 								as item_id
+        ,item->>'quantity' 							as item_quantity
+		,item->>'description' 						as item_description
+		,item#>>'{unit,name}' 						as item_unit_name
+		,item#>>'{unit,value,amount}' 				as item_unit_amount
+		,item#>>'{unit,value,currency}' 			as item_unit_currency
+		,item#>>'{unit,value,unitOfAccount}' 		as item_unit_unitofaccount
+FROM releases_limited c 
+INNER JOIN data d ON c.data_id = d.id
+LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award on true
+INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{contracts}')::jsonb) as contracts on true
+INNER JOIN LATERAL jsonb_array_elements((contracts#>>'{items}')::jsonb) AS item on true
+) as layered_table_for_qlik
+;
+
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_yearmonth');
+///$tab 30. Incr Load End
+// Store last update date
+IF NoOfRows('OffsetTable') > 0 THEN
+	Directory [$(scrDIC_QVD_PATH)];
+    
+    Store OffsetTable into OffsetTable.txt (txt);
+	Drop Table OffsetTable;
+ENDIF;
+
+LOOP;
+///$tab exit script
+Exit script;

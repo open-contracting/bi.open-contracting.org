@@ -1,0 +1,95 @@
+SET scrLOCAL_BENCH_PATH = 'lib://OCDSint/Benchmarking/';
+
+details:
+Load ocid as [Tender ID]
+    ,TenderStatus
+	,'undefined' as ProcurementMethod
+    ,[_procuringEntity_id_name] as IDProcuringEntity
+//     ,IF(ContractStatus = 'cancelled',NULL(),[_supplier_id_name]) as IDSupplier
+    ,IF(ContractStatus = 'cancelled',NULL(),[Contract amount USD]) as [Contract amount USD]
+    ,IDContract
+    ,ContractStatus
+    ,[Contract exceeds budget]
+    ,[Tender period length] as [TenderPeriod]
+    ,Year([Tender date]) as [BM_Year]
+    ,Month([Tender date]) as [Month]
+Resident Tender;
+
+LET details_NoOfRows = NoOfRows('details');
+Trace details_NoOfRows >> '$(details_NoOfRows)';
+
+milestones:
+Load Distinct IDContract
+    ,[Contract milestones present]
+Resident Contract_milestones;
+
+Outer Join (milestones)
+Load IDContract
+	,[Contract milestone on time]
+Resident Contract_milestones
+Where [Contract milestone on time] = 1;
+
+Left Join (details)
+Load *
+Resident milestones;
+
+Drop table milestones;
+
+LET details_NoOfRows = NoOfRows('details');
+Trace details_NoOfRows >> '$(details_NoOfRows)';
+
+data:
+Load [BM_Year]
+	,[Month]
+    ,TenderStatus
+    ,ProcurementMethod
+    ,Count(Distinct [Tender ID]) as M06 // Number of procedures
+//     ,SUM([Contract amount USD]) as M05 // Awarded value FIXIT
+    ,SUM([Contract amount USD]) as M02 // Contracted value
+    ,Count(Distinct IF(ContractStatus <> 'cancelled',IDContract)) as M04
+	,Count(Distinct IF(ContractStatus <> 'cancelled' and [Contract milestone on time] = 1 ,IDContract)) as E03_1
+    ,Count(Distinct IF(ContractStatus <> 'cancelled' and [Contract milestones present] = 1 ,IDContract)) as E03_2
+    ,SUM([TenderPeriod]) as E06_SUM
+    ,Count([TenderPeriod]) as E06_COUNT
+    ,Count(Distinct IF(ContractStatus = 'cancelled',IDContract)) as E08_1
+    ,Count(Distinct IDContract) as E08_2
+    ,Count(Distinct IF(ContractStatus <> 'cancelled' and [Contract exceeds budget] = 1 ,IDContract)) as V03_1
+    ,Count(Distinct IF(ContractStatus <> 'cancelled' ,IDContract)) as V03_2
+Resident details
+Group by [BM_Year],[Month],TenderStatus,ProcurementMethod;
+
+Concatenate (data)
+Load [BM_Year]
+    ,Count(Distinct IDProcuringEntity) as M07 // Number of buyers
+//     ,Count(Distinct IDSupplier) as M03 // Number of suppliers
+Resident details
+Group By [BM_Year];
+
+Drop table details;
+
+FOR Each scrBM_Year in FieldValueList('BM_Year')
+
+BM_$(scrBM_Year):
+Load 'AG' as country
+	,'AG' as country_tmp
+	,*
+Resident data
+Where [BM_Year] = $(scrBM_Year);
+
+IF NOT IsNull( FileSize('$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd')) THEN
+
+Concatenate (BM_$(scrBM_Year))
+Load *
+FROM [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd)
+Where NOT Exists(country_tmp,country);
+
+ENDIF;
+
+Drop field country_tmp;
+
+Store BM_$(scrBM_Year) into [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd);
+Drop table BM_$(scrBM_Year);
+
+NEXT
+
+Drop table data;

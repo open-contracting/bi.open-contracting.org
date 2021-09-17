@@ -1,0 +1,168 @@
+// Comment DROP FIELD [IDTenderKey_Contracts]; at 9. Validator (Quality)
+
+SET scrLOCAL_BENCH_PATH = 'lib://OCDSint/Benchmarking/';
+
+valid_tenders_tmp:
+Load [IDTenderKey] as [IDTenderKey_valid]
+Resident TenderQuality
+Where [_Valid Tenders Only] = 1;
+
+
+details:
+Load IDTenderOrig as [Tender ID]
+	,IDTenderKey
+    ,tender_status as TenderStatus
+	,tender_procurementMethod as ProcurementMethod
+    ,IDbuyerKey as IDProcuringEntity
+    ,tender_tenderPeriod_duration as [TenderPeriod]
+    ,Year([tender_datePublished]) as [BM_Year]
+    ,Month(tender_datePublished) as [Month]
+Resident Tender
+Where Exists(IDTenderKey_valid,IDTenderKey)
+;
+
+Drop table valid_tenders_tmp;
+
+// Tender CPV Division
+item_cpv_div:
+Load IDItemKey
+	,IDLotKey
+    ,IF(items_classification_scheme='DLO', 33, Left(items_classification_id,2)) as item_cpv_div
+Resident Items;
+
+Left Join (item_cpv_div)
+Load IDLotKey
+	,IDTenderKey
+Resident Lots;
+
+Left Join (item_cpv_div)
+Load IDTenderKey
+	,IDTenderOrig as [Tender ID]
+Resident Tender;
+
+tender_cpv_div:
+Load [Tender ID]
+	,Concat(distinct item_cpv_div,',') as tender_cpv_div
+Resident item_cpv_div
+Group by [Tender ID];
+
+Drop table item_cpv_div;
+
+Left Join (details)
+Load [Tender ID]
+	,IF(SubStringCount(tender_cpv_div,',')>0,0,tender_cpv_div) as CPV2
+Resident tender_cpv_div;
+
+Drop table tender_cpv_div;
+
+// for contracts
+details2:
+NoConcatenate
+Load [Tender ID]
+	,IDTenderKey
+    ,TenderStatus
+	,ProcurementMethod
+    ,CPV2
+    ,[BM_Year]
+    ,[Month]
+Resident details;
+
+Left Join (details)
+Load IDTenderKey
+	,IDLotKey
+    ,[Lot bidders count]
+    ,lot_tillAward_duration as DaysFromCloseToAward
+Resident Lots;
+
+Left Join (details)
+Load IDLotKey_Award as IDLotKey
+	,IDLotBidKey
+	,IDAwardKey
+    ,award_amountUSD
+    ,1 as AwardedFlag
+Resident Awards
+Where award_status = 'active';
+
+Left Join (details)
+Load Distinct IDLotBidKey
+	,IDtendererKey as awarded_supplier
+Resident Bids
+Where bid_status = 'valid';   
+
+// for C04
+Left Join (details)
+Load IDLotKey
+    ,[Lot bidders count]
+Resident Lots;
+
+Left Join (details2)
+Load IDTenderKey_Contracts as IDTenderKey
+	,contract_amountUSD
+    ,IDContractKey
+Resident Contracts;
+
+Concatenate (details)
+Load *
+Resident details2;
+
+Drop table details2;
+
+data:
+Load [BM_Year]
+	,[Month]
+    ,TenderStatus
+    ,ProcurementMethod
+    ,CPV2
+    ,Count(Distinct [Tender ID]) as M06 // Number of procedures
+    ,SUM(award_amountUSD) as M05 // Awarded value
+    ,SUM(contract_amountUSD) as M02 // Contracted value
+    ,Count(Distinct IDContractKey) as M04
+    ,Count(Distinct IF(AwardedFlag=1,IDLotKey)) as C02 // awarded lots count
+    ,Count(Distinct IF([Lot bidders count]=1,IDLotKey)) as C04_1
+    ,Count(Distinct IDLotKey) as C04_2
+    ,Sum(IF([Lot bidders count]=1,award_amountUSD)) as C05 // % Singlebid Award amount: C05/M05
+    ,Sum([Lot bidders count]) as C06_SUM
+    ,Count([Lot bidders count]) as C06_COUNT
+    ,Median([Lot bidders count]) as C07
+    ,SUM(DaysFromCloseToAward) as E04_SUM
+    ,Count(DaysFromCloseToAward) as E04_COUNT
+    ,SUM([TenderPeriod]) as E06_SUM
+    ,Count([TenderPeriod]) as E06_COUNT
+Resident details
+Group by [BM_Year],[Month],TenderStatus,ProcurementMethod,CPV2;
+
+Concatenate (data)
+Load [BM_Year]
+    ,Count(Distinct IDProcuringEntity) as M07 // Number of buyers
+    ,Count(Distinct awarded_supplier) as M03 // Number of suppliers
+Resident details
+Group By [BM_Year];
+
+Drop table details;
+
+FOR Each scrBM_Year in FieldValueList('BM_Year')
+
+BM_$(scrBM_Year):
+Load 'KG' as country
+	,'KG' as country_tmp
+	,*
+Resident data
+Where [BM_Year] = $(scrBM_Year);
+
+IF NOT IsNull( FileSize('$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd')) THEN
+
+Concatenate (BM_$(scrBM_Year))
+Load *
+FROM [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd)
+Where NOT Exists(country_tmp,country);
+
+ENDIF;
+
+Drop field country_tmp;
+
+Store BM_$(scrBM_Year) into [$(scrLOCAL_BENCH_PATH)BM_$(scrBM_Year).qvd] (qvd);
+Drop table BM_$(scrBM_Year);
+
+NEXT
+
+Drop table data;

@@ -1,0 +1,1130 @@
+///$tab Main
+SET ThousandSep=' ';
+SET DecimalSep=',';
+SET MoneyThousandSep=' ';
+SET MoneyDecimalSep=',';
+SET MoneyFormat='# ##0,00 $;-# ##0,00 $';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD.MM.YYYY';
+SET TimestampFormat='DD.MM.YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-US';
+SET CreateSearchIndexOnReload=0;
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET NumericalAbbreviation='3:k;6:M;9:G;12:T;15:P;18:E;21:Z;24:Y;-3:m;-6:μ;-9:n;-12:p;-15:f;-18:a;-21:z;-24:y';
+
+
+///$tab 01. Paths
+// // Paths to local Data //dev
+// Set scrDIC_QVD_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/01_Dictionary/';
+// Set scrTRN_QVD_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/02_Transaction/';
+// Set scrLOCAL_DATA_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/01_QVDDB/03_LocalData/';
+// Set scrLOCAL_FILES_PATH = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG/02_LocalFiles/';
+
+
+// // Paths to local Data //test
+// Set scrDIC_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/01_Dictionary/';
+// Set scrTRN_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/02_Transaction/';
+// Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/03_LocalData/';
+// Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Afghanistan/02_LocalFiles/';
+
+
+// // Paths to local Data //prod
+// Set scrDIC_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/01_Dictionary/';
+// Set scrTRN_QVD_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/02_Transaction/';
+// Set scrLOCAL_DATA_PATH = 'lib://OCDSint/Afghanistan/01_QVDDB/03_LocalData/';
+// Set scrLOCAL_FILES_PATH = 'lib://OCDSint/Afghanistan/02_LocalFiles/';
+
+REM Select environment (for data connection names)
+	0 = dev
+    1 = test
+    2 = prod
+;
+
+SET scrEnvironment = 2;
+
+IF scrEnvironment = 0 THEN 
+
+    // Paths to local Data //dev
+	SET scr_DC_path = 'lib://root - karandin (rbcgrp_karandin)/karandin/OCDS AG';
+    
+    //Web Connection Name //dev
+    SET scrURLConnectionName = 'lib://karandin_test_CDB3_timberSpecies (rbcgrp_karandin)';
+    
+    //Data connection names //dev
+    SET RESTCurrencyConnection 	= 'fixer.io (rbcgrp_karandin)';
+    SET DBConnection			= 'OCDSDB - PostgreSQL (rbcgrp_karandin)';
+
+
+ELSEIF scrEnvironment = 1 THEN 
+
+    // Paths to local Data //test
+	SET scr_DC_path = 'lib://OCDSint/Afghanistan';
+    
+    //Web Connection Name //test
+    SET scrURLConnectionName = 'lib://WorldPopulation';
+    
+    //Data connection names //test
+    SET RESTCurrencyConnection 	= 'fixer.io';
+	SET DBConnection			= 'OCDSDB';
+    
+ELSEIF scrEnvironment = 2 THEN
+
+    // Paths to local Data //prod
+	SET scr_DC_path = 'lib://OCDSint/Afghanistan';
+
+    //Web Connection Name //prod
+    SET scrURLConnectionName = 'lib://WorldPopulation';
+    
+    //Data connection names //prod
+    SET RESTCurrencyConnection 	= 'fixer.io';
+	SET DBConnection			= 'OCDSDB';
+    
+ENDIF;
+
+//Paths
+
+LET scrDIC_QVD_PATH 			= scr_DC_path&'/01_QVDDB/01_Dictionary/';
+LET scrTRN_QVD_PATH				= scr_DC_path&'/01_QVDDB/02_Transaction/';
+LET scrLOCAL_DATA_PATH 			= scr_DC_path&'/01_QVDDB/03_LocalData/';
+LET scrLOCAL_FILES_PATH 		= scr_DC_path&'/02_LocalFiles/';
+
+
+///$tab 02. Parameters
+// // Collection Id
+// Set scrCollectionId = 1951;
+
+//DB Table name
+
+Set scrTableName = 'afghanistan_release_packages';
+
+// Variables for incremental load
+Let scrCurrentDate = Today(1);
+Set scrStartYear = 2018;
+Set scrStartCEYear = 2017; // for currency exchange
+Let scrEndYear = Year(scrCurrentDate);
+
+// API key for fixer.io (Currency Exchange)
+Set scrFixerAPIkey = '***';
+
+///$tab 03. Procedures
+// QVD file incremental updater
+
+REM Please note that directory of qvd files should be defined in script prior to calling this procedure;
+
+SUB QVDupdate(TableName, KeyFieldName, PeriodFieldName, dropTableFlag)
+  IF NoOfRows('$(TableName)') > 0 THEN
+    FOR Each scrQVDFile in FileList('$(TableName)????.qvd')
+      Concatenate ($(TableName))
+      Load
+         *
+      From  [$(scrQVDFile)] (qvd)
+      Where NOT Exists($(KeyFieldName));  
+    NEXT
+
+    FOR Each scrIterPeriod in FieldValueList('$(PeriodFieldName)')
+      $(TableName)$(scrIterPeriod):
+      NoConcatenate
+      Load
+           *
+      Resident $(TableName)
+      Where [$(PeriodFieldName)] = $(scrIterPeriod);  
+
+      Store $(TableName)$(scrIterPeriod) into $(TableName)$(scrIterPeriod).qvd (qvd);
+      TRACE Store file $(TableName)$(scrIterPeriod);
+      Drop Table $(TableName)$(scrIterPeriod);
+    NEXT
+
+    ELSE 
+      TRACE No data update;
+  ENDIF
+  IF '$(dropTableFlag)' <> 1 THEN 
+  	Drop Table $(TableName);
+  ENDIF;
+ENDSUB;
+///$tab 10. Incremental load start
+// Get last update date
+Directory [$(scrDIC_QVD_PATH)];
+
+IF NOT IsNull(FileSize('OffsetTable.txt')) THEN
+	OffsetTable:
+    Load
+    	 UpdateDate
+    From OffsetTable.txt 
+    (txt, utf8, embedded labels, delimiter is '\t', msq);     
+    
+    Let scrUpdateDate = Peek('UpdateDate', -1, 'OffsetTable');
+    Drop Table OffsetTable;
+    
+    ELSE
+    	Let scrUpdateDate = scrStartYear;
+ENDIF
+
+TRACE Update data since $(scrUpdateDate);
+
+LIB CONNECT TO '$(DBConnection)';
+///$tab 11. TenderContracts
+// Tenders and Contracts Joint Table
+
+Set scrFile = TendersContracts;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+[$(scrFile)]:
+LOAD *
+	 ,YEAR(tender_datetime) 						AS tender_year
+     ,DATE(FLOOR((tender_datetime))) 				AS tender_date
+     ,IF(NOT ISNULL(tender_id),
+     	IF(NOT ISNULL(tender_procuringentity_id),
+     		tender_procuringentity_name&' | '&tender_procuringentity_id,
+        		parties_procuringentity_name&' | '&parties_procuringentity_id))
+            										AS tender_procuringentity_id_name
+     ,IF(NOT ISNULL(contract_id),
+     	IF(NOT ISNULL(award_supplier_id),
+     		award_supplier_name&' | '&award_supplier_id,
+        		'problem encountered'))					AS contract_supplier_id_name
+
+;
+LOAD *
+	 ,IF(NOT ISNULL(tender_tenderperiod_startdate), tender_tenderperiod_startdate,
+     	IF(NOT ISNULL(tender_tenderperiod_enddate), tender_tenderperiod_enddate,
+        	IF(NOT ISNULL(tender_awardperiod_startdate), tender_awardperiod_startdate, 
+            	IF(NOT ISNULL(tender_awardperiod_enddate), tender_awardperiod_enddate,
+                	IF(NOT ISNULL(contracts_mindate), contracts_mindate, 
+                    	'problem encountered'))))) 	AS tender_datetime
+;
+LOAD 
+	release_id										AS release_id
+	,Timestamp(tender_date)							AS tender_datemodified
+	,tender_id										AS tender_id
+	,tender_status									AS tender_status
+	,tender_mainprocurementcategory					AS tender_mainprocurementcategory
+	,procurementmethodrationale						AS procurementmethodrationale
+	,Timestamp(tender_tenderperiod_enddate)			AS tender_tenderperiod_enddate
+	,Timestamp(tender_tenderperiod_startdate)		AS tender_tenderperiod_startdate
+	,Timestamp(tender_awardperiod_enddate)			AS tender_awardperiod_enddate
+	,Timestamp(tender_awardperiod_startdate)		AS tender_awardperiod_startdate
+	,Text(tender_procuringentity_id)				AS tender_procuringentity_id
+    ,tender_procuringentity_name					AS tender_procuringentity_name
+	,Text(planning_budget_id)						AS planning_budget_id
+	,Num(planning_budget_amount)					AS planning_budget_amount
+	,planning_budget_currency						AS planning_budget_currency
+	,Text(parties_procuringentity_id)				AS parties_procuringentity_id
+    ,parties_procuringentity_name					AS parties_procuringentity_name
+	,Timestamp(contracts_mindate)					AS contracts_mindate
+	,contract_status								AS contract_status
+	,contract_statusdetails							AS contract_statusdetails
+	,contract_id									AS contract_id
+	,contract_description							AS contract_description
+	,contract_title									AS contract_title
+	,Timestamp(contract_datesigned)					AS contract_datesigned
+	,Num(contract_value_amount)						AS contract_value_amount
+	,contract_value_currency						AS contract_value_currency
+	,Timestamp(contract_period_enddate)				AS contract_period_enddate
+	,Timestamp(contract_period_startdate)			AS contract_period_startdate
+	,award_id										AS award_id
+	,Text(award_supplier_id) 						AS award_supplier_id					
+	,award_supplier_name							AS award_supplier_name
+
+WHERE NOT (	tender_status = 'planned'
+			AND
+            	(	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+            		AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                	AND ISNULL(contracts_mindate)
+                )
+            )
+;
+SELECT
+	    arp.data->>'ocid'								AS release_id
+	   ,arp.data->>'date' 								AS tender_date
+       ,arp.data#>>'{tender,id}' 						AS tender_id
+	   ,arp.data#>>'{tender,status}' 					AS tender_status
+	   ,arp.data#>>'{tender,mainProcurementCategory}'	AS tender_mainprocurementcategory
+       ,arp.data#>>'{procurementMethodRationale}'		AS procurementmethodrationale
+	   ,arp.data#>>'{tender,tenderPeriod,endDate}' 		AS tender_tenderperiod_enddate
+	   ,arp.data#>>'{tender,tenderPeriod,startDate}' 	AS tender_tenderperiod_startdate
+	   ,arp.data#>>'{tender,awardPeriod,endDate}' 		AS tender_awardperiod_enddate
+	   ,arp.data#>>'{tender,awardPeriod,startDate}' 	AS tender_awardperiod_startdate
+	   ,arp.data#>>'{tender,procuringEntity,id}'		AS tender_procuringentity_id
+       ,arp.data#>>'{tender,procuringEntity,name}'		AS tender_procuringentity_name
+	   ,arp.data#>>'{planning,budget,id}' 				AS planning_budget_id
+	   ,arp.data#>>'{planning,budget,amount,amount}' 	AS planning_budget_amount
+	   ,arp.data#>>'{planning,budget,amount,currency}'	AS planning_budget_currency
+	   ,contract->>'status' 							AS contract_status
+       ,contract->>'statusDetails' 						AS contract_statusdetails
+	   ,contract->>'id' 								AS contract_id
+       ,contract->>'description' 						AS contract_description
+       ,contract->>'title' 								AS contract_title
+       ,contract->>'dateSigned' 						AS contract_datesigned
+       ,contract#>>'{value,amount}' 					AS contract_value_amount
+	   ,contract#>>'{value,currency}' 					AS contract_value_currency
+       ,contract#>>'{period,endDate}' 					AS contract_period_enddate
+	   ,contract#>>'{period,startDate}' 				AS contract_period_startdate
+	   ,award->>'id' 									AS award_id
+	   ,supplier->>'id' 								AS award_supplier_id
+       ,supplier->>'name' 								AS award_supplier_name
+	   
+	   ,parties_procuringentity_id						AS parties_procuringentity_id
+       ,parties_procuringentity_name					AS parties_procuringentity_name
+       ,contracts_mindate								AS contracts_mindate
+
+FROM $(scrTableName) arp
+
+LEFT JOIN LATERAL jsonb_array_elements((data#>>'{awards}')::jsonb) as award on true
+LEFT JOIN LATERAL jsonb_array_elements((award#>>'{suppliers}')::jsonb) as supplier on true
+
+LEFT JOIN LATERAL jsonb_array_elements((data#>>'{contracts}')::jsonb) as contract on true
+
+LEFT JOIN (	SELECT arp.data->>'ocid' as id
+		   ,string_agg(parties#>>'{id}' , ', ')	AS parties_procuringentity_id
+           ,string_agg(parties#>>'{name}' , ', ')	AS parties_procuringentity_name
+           FROM $(scrTableName) arp
+		   LEFT JOIN LATERAL jsonb_array_elements((arp.data#>>'{parties}')::jsonb) as parties on true
+           WHERE 
+           arp.data->>'date' > '$(scrUpdateDate)'
+		   AND parties#>>'{roles}' like '%procuringEntity%'
+		   GROUP BY arp.data->>'ocid'
+		   ) AS procuringEntities
+		   ON arp.data->>'ocid' = procuringEntities.id
+
+LEFT JOIN (	SELECT arp.data->>'ocid' as id
+		   ,min(contract#>>'{dateSigned}' )	AS contracts_mindate
+           FROM $(scrTableName) arp
+		   INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+           WHERE 
+           arp.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY arp.data->>'ocid'
+		   ) AS contracts
+		   ON arp.data->>'ocid' = contracts.id
+
+WHERE
+data->>'date' > '$(scrUpdateDate)'
+ORDER BY data->>'ocid' ASC
+;
+
+//Update last loaded date
+IF NoOfRows('$(scrFile)') > 0 THEN
+  OffsetTable:
+  Load 
+      MaxString(tender_datemodified) as UpdateDate
+  Resident $(scrFile);
+ENDIF;
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_year');
+
+
+///$tab 13. Contract Milestones
+// Contracts Milestones
+
+Set scrFile = Contract_milestones;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+[$(scrFile)_Raw]:
+LOAD *
+	 ,IF(milestones_class = 1, 1, 0) 					AS milestones_metontime
+     ,IF(milestones_class = 0, 1, 0) 					AS milestones_metnotontime
+     ,IF(milestones_class = 2, 1, 0) 					AS milestones_duedateinfurure
+     ,IF(milestones_class = 3, 1, 0) 					AS milestones_noduedate
+     ,YEAR(tender_datetime) 							AS tender_year
+     ,DATE(FLOOR((tender_datetime))) 					AS tender_date
+;
+LOAD *
+     ,IF((milestones_duedate) - (milestones_datemet) >= 0, 1,
+     	IF((milestones_duedate) >= (Today()), 2, 
+        	IF(ISNULL(milestones_duedate), 3,
+            	0))) 									AS milestones_class
+	 ,contract_id&'||'&milestones_id 					AS milestones_distinct_id
+     ,IF(NOT ISNULL(tender_tenderperiod_startdate), tender_tenderperiod_startdate,
+     	IF(NOT ISNULL(tender_tenderperiod_enddate), tender_tenderperiod_enddate,
+        	IF(NOT ISNULL(tender_awardperiod_startdate), tender_awardperiod_startdate, 
+            	IF(NOT ISNULL(tender_awardperiod_enddate), tender_awardperiod_enddate,
+                	IF(NOT ISNULL(contracts_mindate), contracts_mindate, 
+                    	'problem encountered'))))) 		AS tender_datetime
+;	 
+LOAD release_id
+	 ,tender_id
+	 ,TIMESTAMP(milestones_datemet) 					AS milestones_datemet
+	 ,TIMESTAMP(milestones_duedate) 					AS milestones_duedate
+     ,milestones_id										AS milestones_id
+	 ,milestones_type									AS milestones_type
+	 ,milestones_status									AS milestones_status
+	 ,milestones_title									AS milestones_title
+     ,contract_id										AS contract_id
+     ,contract_status									AS contract_status
+     ,contract_statusdetails							AS contract_statusdetails
+     ,contract_datesigned								AS contract_datesigned
+    
+    ,Timestamp(tender_tenderperiod_enddate)				AS tender_tenderperiod_enddate
+	,Timestamp(tender_tenderperiod_startdate)			AS tender_tenderperiod_startdate
+	,Timestamp(tender_awardperiod_enddate)				AS tender_awardperiod_enddate
+	,Timestamp(tender_awardperiod_startdate)			AS tender_awardperiod_startdate
+	,Timestamp(contracts_mindate)						AS contracts_mindate
+WHERE NOT (	tender_status = 'planned'
+        AND
+            (	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+                AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                AND ISNULL(contracts_mindate)
+            )
+        )
+;
+SELECT
+	    arp.data->>'ocid'							AS release_id
+	   ,arp.data->>'date' 							AS tender_date
+       ,arp.data#>>'{tender,id}' 					AS tender_id
+       ,arp.data#>>'{tender,status}' 				AS tender_status
+	   ,contract->>'status' 						AS contract_status
+       ,contract->>'statusDetails' 					AS contract_statusdetails
+	   ,contract->>'id' 							AS contract_id
+       ,contract->>'dateSigned' 					AS contract_datesigned
+       ,arp.data#>>'{tender,tenderPeriod,endDate}' 	AS tender_tenderperiod_enddate
+	   ,arp.data#>>'{tender,tenderPeriod,startDate}'AS tender_tenderperiod_startdate
+	   ,arp.data#>>'{tender,awardPeriod,endDate}' 	AS tender_awardperiod_enddate
+	   ,arp.data#>>'{tender,awardPeriod,startDate}' AS tender_awardperiod_startdate
+       ,contracts_mindate							AS contracts_mindate
+	   
+	   ,milestones->>'dateMet'						AS milestones_dateMet
+	   ,milestones->>'dueDate'						AS milestones_dueDate
+	   ,milestones->>'id'							AS milestones_id
+	   ,milestones->>'type'							AS milestones_type
+	   ,milestones->>'status'						AS milestones_status
+	   ,milestones->>'title'						AS milestones_title
+
+FROM $(scrTableName) arp
+
+INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+LEFT JOIN LATERAL jsonb_array_elements((contract#>>'{implementation,milestones}')::jsonb) as milestones on true
+
+LEFT JOIN (	SELECT arp.data->>'ocid' 				AS id
+		   ,min(contract#>>'{dateSigned}' )			AS contracts_mindate
+           FROM $(scrTableName) arp
+		   INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+           WHERE 
+           arp.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY arp.data->>'ocid'
+		   ) AS contracts
+		   ON arp.data->>'ocid' = contracts.id
+		   
+WHERE
+data->>'date' > '$(scrUpdateDate)'
+ORDER BY data->>'ocid' ASC
+;
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)_Raw', 'tender_id', 'tender_year', '1'); //1 for keeping the table during reload, do not forget to drop table later
+
+[$(scrFile)]:
+LOAD *
+	 ,IF(contracts_milestonesMetOnTimePercent = 1 AND noOfMilestones_onTime <> 0, 1, 0) AS contract_milestonesIsMetOnTime
+     ,IF(ISNULL(contracts_milestonesMetOnTimePercent), 
+     	IF(contracts_noMilestonesFlag = 1, 1, 2))	AS contracts_reasonNoPercent //1 = no milestones, 2 = only future due dates 
+;
+LOAD *
+	 ,noOfMilestones_onTime/(noOfMilestones_onTime+noOfMilestones_notOnTime) AS contracts_milestonesMetOnTimePercent
+     ,IF(noOfMilestones_noDueDate > 0, 1) AS contracts_noMilestonesFlag
+;
+LOAD contract_id
+	 ,ONLY(contract_status) 			AS contract_status
+     ,ONLY(contract_statusdetails)		AS contract_statusdetails
+     ,ONLY(tender_year)					AS tender_year
+	 ,ONLY(tender_date)					AS tender_date
+     ,ONLY(tender_id)					AS tender_id
+	 ,ONLY(contract_datesigned)			AS contract_datesigned
+	 ,milestones_type 					AS contract_milestones_type
+	 ,SUM(milestones_metontime) 		AS noOfMilestones_onTime 
+     ,SUM(milestones_metnotontime) 		AS noOfMilestones_notOnTime 
+     ,SUM(milestones_duedateinfurure) 	AS noOfMilestones_dueDateInFuture
+     ,SUM(milestones_noduedate)			AS noOfMilestones_noDueDate
+RESIDENT [$(scrFile)_Raw]
+GROUP BY contract_id, milestones_type
+;
+
+DROP TABLE  [$(scrFile)_Raw];
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_year');
+///$tab 14. Contract Transactions
+// Contracts Transactions
+
+Set scrFile = Contract_transactions;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+[$(scrFile)]:
+LOAD *
+     ,YEAR(tender_datetime) 									AS tender_year
+     ,DATE(FLOOR((tender_datetime))) 							AS tender_date
+     ,transactions_payee_name & ' | ' &transactions_payee_id 	AS [payee_id_name]
+;
+LOAD *
+	 ,contract_id&'||'&transactions_id 					AS transaction_distinct_id
+     ,IF(NOT ISNULL(tender_tenderperiod_startdate), tender_tenderperiod_startdate,
+     	IF(NOT ISNULL(tender_tenderperiod_enddate), tender_tenderperiod_enddate,
+        	IF(NOT ISNULL(tender_awardperiod_startdate), tender_awardperiod_startdate, 
+            	IF(NOT ISNULL(tender_awardperiod_enddate), tender_awardperiod_enddate,
+                	IF(NOT ISNULL(contracts_mindate), contracts_mindate, 
+                    	'problem encountered'))))) 		AS tender_datetime
+;	 
+LOAD release_id											AS release_id
+	,tender_id											AS tender_id
+	,contract_id										AS contract_id
+	,transactions_id									AS transactions_id
+	,TIMESTAMP(transactions_date)						AS transactions_date
+	,NUM(transactions_value_amount)						AS transactions_value_amount
+	,transactions_value_currency						AS transactions_value_currency
+    ,transactions_payee_id								AS transactions_payee_id
+	,transactions_payee_name							AS transactions_payee_name
+    
+    ,Timestamp(tender_tenderperiod_enddate)				AS tender_tenderperiod_enddate
+	,Timestamp(tender_tenderperiod_startdate)			AS tender_tenderperiod_startdate
+	,Timestamp(tender_awardperiod_enddate)				AS tender_awardperiod_enddate
+	,Timestamp(tender_awardperiod_startdate)			AS tender_awardperiod_startdate
+	,Timestamp(contracts_mindate)						AS contracts_mindate
+WHERE NOT (	tender_status = 'planned'
+        AND
+            (	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+                AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                AND ISNULL(contracts_mindate)
+            )
+        )
+;
+SELECT
+	    arp.data->>'ocid' 							AS release_id
+       ,arp.data#>>'{tender,id}' 					AS tender_id
+       ,arp.data#>>'{tender,status}' 				AS tender_status
+	   ,arp.data#>>'{tender,tenderPeriod,endDate}' 	AS tender_tenderperiod_enddate
+	   ,arp.data#>>'{tender,tenderPeriod,startDate}'AS tender_tenderperiod_startdate
+	   ,arp.data#>>'{tender,awardPeriod,endDate}' 	AS tender_awardperiod_enddate
+	   ,arp.data#>>'{tender,awardPeriod,startDate}' AS tender_awardperiod_startdate
+       ,contracts_mindate							AS contracts_mindate
+	   ,contract->>'id' 							AS contract_id
+	   ,transactions->>'id'							AS transactions_id
+	   ,transactions->>'date'						AS transactions_date
+       ,transactions#>>'{value,amount}' 			AS transactions_value_amount
+	   ,transactions#>>'{value,currency}' 			AS transactions_value_currency
+       ,transactions#>>'{payee,id}' 				AS transactions_payee_id
+	   ,transactions#>>'{payee,name}' 				AS transactions_payee_name   
+FROM $(scrTableName) arp
+
+INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+INNER JOIN LATERAL jsonb_array_elements((contract#>>'{implementation,transactions}')::jsonb) as transactions on true
+         
+LEFT JOIN (	SELECT arp.data->>'ocid' 				AS id
+		   ,min(contract#>>'{dateSigned}' )			AS contracts_mindate
+           FROM $(scrTableName) arp
+		   INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+           WHERE 
+           arp.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY arp.data->>'ocid'
+		   ) AS contracts
+		   ON arp.data->>'ocid' = contracts.id
+
+WHERE
+data->>'date' > '$(scrUpdateDate)'
+ORDER BY data->>'ocid' ASC
+;
+
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_year'); //1 for keeping the table during reload, do not forget to drop table later
+///$tab 15. Parties
+// Parties
+
+Set scrFile = Party;
+
+Directory [$(scrDIC_QVD_PATH)];
+
+[$(scrFile)]:
+LOAD parties_name						AS [parties_name]
+	 ,parties_id						AS [parties_id]
+	 ,parties_identifier_id				AS [parties_identifier_id]
+	 ,parties_identifier_legalname		AS [parties_identifier_legalname]
+	 ,parties_identifier_scheme			AS [parties_identifier_scheme]
+	 ,parties_contactpoint_email		AS [parties_contactpoint_email]
+	 ,parties_contactpoint_faxnumber	AS [parties_contactpoint_faxnumber]
+	 ,parties_contactpoint_name			AS [parties_contactpoint_name]
+	 ,parties_contactpoint_telephone	AS [parties_contactpoint_telephone]
+	 ,parties_address_countryname		AS [parties_address_countryname]
+	 ,parties_address_locality			AS [parties_address_locality]
+	 ,parties_address_postalcode		AS [parties_address_postalcode]
+	 ,parties_address_region			AS [parties_address_region]
+	 ,parties_address_streetaddress		AS [parties_address_streetaddress]
+	 ,parties_role						AS [parties_role]
+     ,Timestamp(tender_date)			AS [parties_dateModified]
+     ,parties_name & ' | ' &parties_id 	AS [parties_id_name]
+WHERE NOT (	tender_status = 'planned'
+        AND
+            (	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+                AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                AND ISNULL(contracts_mindate)
+            )
+        )
+;
+;
+SELECT
+	    arp.data->>'ocid' 							AS release_id
+	   ,arp.data->>'date' 							AS tender_date
+       ,arp.data#>>'{tender,id}' 					AS tender_id
+	   ,arp.data#>>'{tender,status}' 				AS tender_status
+       ,contracts_mindate							AS contracts_mindate
+	   ,arp.data#>>'{tender,tenderPeriod,endDate}' 	AS tender_tenderperiod_enddate
+	   ,arp.data#>>'{tender,tenderPeriod,startDate}'AS tender_tenderperiod_startdate
+	   ,arp.data#>>'{tender,awardPeriod,endDate}' 	AS tender_awardperiod_enddate
+	   ,arp.data#>>'{tender,awardPeriod,startDate}' AS tender_awardperiod_startdate
+	   ,parties->>'name'							AS parties_name
+	   ,parties->>'id'								AS parties_id
+	   ,parties#>>'{identifier,id}'					AS parties_identifier_id
+	   ,parties#>>'{identifier,legalName}'			AS parties_identifier_legalname
+	   ,parties#>>'{identifier,scheme}'				AS parties_identifier_scheme
+	   ,parties#>>'{contactPoint,email}'			AS parties_contactpoint_email
+	   ,parties#>>'{contactPoint,faxNumber}'		AS parties_contactpoint_faxnumber
+	   ,parties#>>'{contactPoint,name}'				AS parties_contactpoint_name
+	   ,parties#>>'{contactPoint,telephone}'		AS parties_contactpoint_telephone
+	   ,parties#>>'{address,countryName}'			AS parties_address_countryname
+	   ,parties#>>'{address,locality}'				AS parties_address_locality
+	   ,parties#>>'{address,postalCode}'			AS parties_address_postalcode
+	   ,parties#>>'{address,region}'				AS parties_address_region
+	   ,parties#>>'{address,streetAddress}'			AS parties_address_streetaddress
+	   ,partyroles->>0								AS parties_role
+FROM $(scrTableName) arp
+
+LEFT JOIN (	SELECT arp.data->>'ocid' 				AS id
+		   ,min(contract#>>'{dateSigned}' )			AS contracts_mindate
+           FROM $(scrTableName) arp
+		   INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{contracts}')::jsonb) as contract on true
+           WHERE 
+           arp.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY arp.data->>'ocid'
+		   ) AS contracts
+		   ON arp.data->>'ocid' = contracts.id
+
+INNER JOIN LATERAL jsonb_array_elements((arp.data#>>'{parties}')::jsonb) as parties on true
+LEFT JOIN LATERAL jsonb_array_elements((parties#>>'{roles}')::jsonb) as partyroles on true
+
+WHERE
+data->>'date' > '$(scrUpdateDate)'
+AND (partyroles->>0 like 'procuringEntity' OR partyroles->>0 like 'supplier')
+ORDER BY data->>'ocid' ASC
+;
+
+IF NoOfRows('$(scrFile)') > 0 THEN
+// ProcuringEntities  
+
+  SET scrCurrentPartyRole = 'procuringEntity';
+  
+  [$(scrCurrentPartyRole)_]:
+  Load
+        parties_dateModified			AS [$(scrCurrentPartyRole)_dateModified]
+		,parties_name					AS [$(scrCurrentPartyRole)_name]		
+		,parties_id						AS [$(scrCurrentPartyRole)_id]
+		,parties_identifier_id			AS [$(scrCurrentPartyRole)_identifier_id]
+		,parties_identifier_legalname	AS [$(scrCurrentPartyRole)_identifier_legalname]
+		,parties_identifier_scheme		AS [$(scrCurrentPartyRole)_identifier_scheme]
+		,parties_contactpoint_email		AS [$(scrCurrentPartyRole)_contactpoint_email]
+		,parties_contactpoint_faxnumber	AS [$(scrCurrentPartyRole)_contactpoint_faxnumber]
+		,parties_contactpoint_name		AS [$(scrCurrentPartyRole)_contactpoint_name]
+		,parties_contactpoint_telephone	AS [$(scrCurrentPartyRole)_contactpoint_telephone]
+		,parties_address_countryname	AS [$(scrCurrentPartyRole)_address_countryname]
+		,parties_address_locality		AS [$(scrCurrentPartyRole)_address_locality]
+		,parties_address_postalcode		AS [$(scrCurrentPartyRole)_address_postalcode]
+		,parties_address_region			AS [$(scrCurrentPartyRole)_address_region]
+		,parties_address_streetaddress	AS [$(scrCurrentPartyRole)_address_streetaddress]
+        ,parties_id_name				AS [$(scrCurrentPartyRole)_id_name]
+  Resident $(scrFile)
+  Where Match(parties_role, /*'payer',*/ '$(scrCurrentPartyRole)');
+
+  IF NOT IsNull(FileSize('$(scrCurrentPartyRole).qvd')) THEN
+      Concatenate([$(scrCurrentPartyRole)_])
+      Load
+           *
+      From [$(scrCurrentPartyRole).qvd] (qvd);     
+  ENDIF
+
+  [$(scrCurrentPartyRole)]:
+  NoConcatenate
+  Load
+       LASTVALUE($(scrCurrentPartyRole)_dateModified) 			AS [$(scrCurrentPartyRole)_dateModified]
+      ,LASTVALUE($(scrCurrentPartyRole)_name) 					AS [$(scrCurrentPartyRole)_name]
+      ,LASTVALUE($(scrCurrentPartyRole)_id) 					AS [$(scrCurrentPartyRole)_id]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_id) 			AS [$(scrCurrentPartyRole)_identifier_id]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_legalname) 	AS [$(scrCurrentPartyRole)_identifier_legalname]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_scheme) 		AS [$(scrCurrentPartyRole)_identifier_scheme]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_email) 	AS [$(scrCurrentPartyRole)_contactpoint_email]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_faxnumber)	AS [$(scrCurrentPartyRole)_contactpoint_faxnumber]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_name) 		AS [$(scrCurrentPartyRole)_contactpoint_name]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_telephone)	AS [$(scrCurrentPartyRole)_contactpoint_telephone]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_countryname) 	AS [$(scrCurrentPartyRole)_address_countryname]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_locality) 		AS [$(scrCurrentPartyRole)_address_locality]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_postalcode) 	AS [$(scrCurrentPartyRole)_address_postalcode]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_region) 		AS [$(scrCurrentPartyRole)_address_region]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_streetaddress) 	AS [$(scrCurrentPartyRole)_address_streetaddress]
+      ,[$(scrCurrentPartyRole)_id_name]
+  Resident [$(scrCurrentPartyRole)_]
+  Group By [$(scrCurrentPartyRole)_id_name]
+  Order By [$(scrCurrentPartyRole)_dateModified] ASC;
+
+  Drop Table [$(scrCurrentPartyRole)_];
+
+  Store [$(scrCurrentPartyRole)] into [$(scrCurrentPartyRole).qvd] (qvd);
+  TRACE Store file $(scrCurrentPartyRole).qvd;
+  Drop Table [$(scrCurrentPartyRole)];
+  
+// Suppliers  
+
+  SET scrCurrentPartyRole = 'supplier';
+  
+  [$(scrCurrentPartyRole)_]:
+  Load
+        parties_dateModified			AS [$(scrCurrentPartyRole)_dateModified]
+		,parties_name					AS [$(scrCurrentPartyRole)_name]		
+		,parties_id						AS [$(scrCurrentPartyRole)_id]
+		,parties_identifier_id			AS [$(scrCurrentPartyRole)_identifier_id]
+		,parties_identifier_legalname	AS [$(scrCurrentPartyRole)_identifier_legalname]
+		,parties_identifier_scheme		AS [$(scrCurrentPartyRole)_identifier_scheme]
+		,parties_contactpoint_email		AS [$(scrCurrentPartyRole)_contactpoint_email]
+		,parties_contactpoint_faxnumber	AS [$(scrCurrentPartyRole)_contactpoint_faxnumber]
+		,parties_contactpoint_name		AS [$(scrCurrentPartyRole)_contactpoint_name]
+		,parties_contactpoint_telephone	AS [$(scrCurrentPartyRole)_contactpoint_telephone]
+		,parties_address_countryname	AS [$(scrCurrentPartyRole)_address_countryname]
+		,parties_address_locality		AS [$(scrCurrentPartyRole)_address_locality]
+		,parties_address_postalcode		AS [$(scrCurrentPartyRole)_address_postalcode]
+		,parties_address_region			AS [$(scrCurrentPartyRole)_address_region]
+		,parties_address_streetaddress	AS [$(scrCurrentPartyRole)_address_streetaddress]
+        ,parties_id_name				AS [$(scrCurrentPartyRole)_id_name]
+  Resident $(scrFile)
+  Where Match(parties_role, '$(scrCurrentPartyRole)');
+
+  IF NOT IsNull(FileSize('$(scrCurrentPartyRole).qvd')) THEN
+      Concatenate([$(scrCurrentPartyRole)_])
+      Load
+           *
+      From [$(scrCurrentPartyRole).qvd] (qvd);     
+  ENDIF
+
+  [$(scrCurrentPartyRole)]:
+  NoConcatenate
+  Load
+       LASTVALUE($(scrCurrentPartyRole)_dateModified) 			AS [$(scrCurrentPartyRole)_dateModified]
+      ,LASTVALUE($(scrCurrentPartyRole)_name) 					AS [$(scrCurrentPartyRole)_name]
+      ,LASTVALUE($(scrCurrentPartyRole)_id) 					AS [$(scrCurrentPartyRole)_id]
+      //,[$(scrCurrentPartyRole)_id]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_id) 			AS [$(scrCurrentPartyRole)_identifier_id]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_legalname) 	AS [$(scrCurrentPartyRole)_identifier_legalname]
+      ,LASTVALUE($(scrCurrentPartyRole)_identifier_scheme) 		AS [$(scrCurrentPartyRole)_identifier_scheme]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_email) 	AS [$(scrCurrentPartyRole)_contactpoint_email]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_faxnumber)	AS [$(scrCurrentPartyRole)_contactpoint_faxnumber]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_name) 		AS [$(scrCurrentPartyRole)_contactpoint_name]
+      ,LASTVALUE($(scrCurrentPartyRole)_contactpoint_telephone)	AS [$(scrCurrentPartyRole)_contactpoint_telephone]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_countryname) 	AS [$(scrCurrentPartyRole)_address_countryname]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_locality) 		AS [$(scrCurrentPartyRole)_address_locality]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_postalcode) 	AS [$(scrCurrentPartyRole)_address_postalcode]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_region) 		AS [$(scrCurrentPartyRole)_address_region]
+      ,LASTVALUE($(scrCurrentPartyRole)_address_streetaddress) 	AS [$(scrCurrentPartyRole)_address_streetaddress]
+      //,LASTVALUE([$(scrCurrentPartyRole)_id_name])				AS [$(scrCurrentPartyRole)_id_name]
+      ,[$(scrCurrentPartyRole)_id_name]
+  Resident [$(scrCurrentPartyRole)_]
+  Group By [$(scrCurrentPartyRole)_id_name]
+  Order By [$(scrCurrentPartyRole)_dateModified] ASC;
+
+  Drop Table [$(scrCurrentPartyRole)_];
+
+  Store [$(scrCurrentPartyRole)] into [$(scrCurrentPartyRole).qvd] (qvd);
+  TRACE Store file $(scrCurrentPartyRole).qvd;
+  Drop Table [$(scrCurrentPartyRole)];  
+  
+  SET scrCurrentPartyRole =;
+ENDIF;
+
+Drop Table $(scrFile);
+
+///$tab 1Z. Incremental load end
+// Store last update date
+IF NoOfRows('OffsetTable') > 0 THEN
+	Directory [$(scrDIC_QVD_PATH)];
+    
+    Store OffsetTable into OffsetTable.txt (txt);
+	Drop Table OffsetTable;
+ENDIF;
+///$tab 20. Currency Exchange
+// Currency Exchange
+
+Directory [$(scrTRN_QVD_PATH)];
+LIB CONNECT TO '$(RESTCurrencyConnection)';
+
+SUB GetCE(CUR1, CUR2, CEdate, CEtable)
+//		 'MDL','USD','2021-01-01','Currency'
+  
+  RestConnectorMasterTable:
+  SQL SELECT 
+      "success",
+      "timestamp",
+      "historical",
+      "base",
+      "date",
+      "__KEY_root",
+      (SELECT 
+          "$(CUR1)",
+          "__FK_rates"
+      FROM "rates" FK "__FK_rates")
+  FROM JSON (wrap on) "root" PK "__KEY_root"
+  WITH CONNECTION (
+  URL "https://data.fixer.io/api/$(CEdate)",
+  QUERY "access_key" "$(scrFixerAPIkey)",
+  QUERY "base" "$(CUR2)",
+  QUERY "symbols" "$(CUR1)"
+  );
+
+  Currency_:
+  LOAD	
+       $(CUR1) as Rate,
+       '$(CUR1)'&'$(CUR2)' as Currency,
+       [__FK_rates] AS [__KEY_root]
+  RESIDENT RestConnectorMasterTable
+  WHERE NOT IsNull([__FK_rates]);
+
+  LEFT JOIN (Currency_)
+  LOAD	
+      Date(Date#([date], 'YYYY-MM-DD')) as CEdate,
+      [__KEY_root]
+  RESIDENT RestConnectorMasterTable
+  WHERE NOT IsNull([__KEY_root]);
+
+  DROP TABLE RestConnectorMasterTable;
+  
+  Concatenate ($(CEtable))
+  Load
+  	   Rate,
+       Currency,
+       CEdate
+  Resident Currency_
+  Where NOT IsNull(CEdate);    
+  Drop Table Currency_;
+ENDSUB
+
+// Alternative procedure version
+// SUB GetCE(CUR1, CUR2, CEdate, CEtable)
+// //		 'MDL','USD','2021-01-01','Currency'
+
+//   Currency_:
+//   NoConcatenate
+//   LOAD
+//       Date(Date#(@1, 'DD-MM-YY')) as CEdate,
+//       @2 as Rate,
+//       '$(CUR1)'&'$(CUR2)' as Currency
+//   FROM [lib://MedicalDataFileRep]
+//   (html, codepage is 28591, no labels, table is @2,
+//   url is 'https://fx-rate.net/historical/?c_input=$(CUR2)&cp_input=$(CUR1)&date_to_input=$(CEdate)&range_input=7');
+  
+//   Inner Join (Currency_)
+//   Load
+//   		Date('$(CEdate)') as CEdate
+//   AutoGenerate 1;  
+  
+//   Concatenate ($(CEtable))
+//   Load
+//   	 *
+//   Resident Currency_;    
+//   Drop Table Currency_;
+// ENDSUB
+
+Let scrIterPeriod = scrStartCEYear;
+
+DO 	
+	Let scrStartCE = Date(MakeDate(scrIterPeriod), 'YYYY-MM-DD');
+	Let scrEndCE = Date(RangeMin(YearEnd(MakeDate(scrIterPeriod)), scrCurrentDate), 'YYYY-MM-DD');
+    
+    Currency:
+    Load * Inline [
+    CEdate, Rate, Currency
+    ];
+
+	IF NOT IsNull(FileSize('Currency$(scrIterPeriod).qvd')) THEN
+      CurrencyLocal:
+      NoConcatenate
+      Load
+           *
+      From [Currency$(scrIterPeriod).qvd] (qvd);  
+
+      CurrencyTmp:
+      Load
+           Max(CEdate) as MaxCEdate
+      Resident CurrencyLocal;   
+      
+      Drop Table CurrencyLocal;
+
+      Let scrStartCE = Date(Peek('MaxCEdate', -1, 'CurrencyTmp') + 1, 'YYYY-MM-DD');
+      Drop Table CurrencyTmp;
+	ENDIF
+	
+    IF scrStartCE <= scrEndCE THEN
+    	TRACE Currency Exchange for period from $(scrStartCE) to $(scrEndCE);
+    ENDIF
+    
+    DO While scrStartCE <= scrEndCE
+		TRACE Currency Date = $(scrStartCE);
+    	CALL GetCE('AFN', 'USD', '$(scrStartCE)', 'Currency');
+        CALL GetCE('EUR', 'USD', '$(scrStartCE)', 'Currency');
+        CALL GetCE('EUR', 'AFN', '$(scrStartCE)', 'Currency');
+    	Let scrStartCE = Date(scrStartCE + 1, 'YYYY-MM-DD');
+    LOOP
+    
+    IF NoOfRows('Currency') > 0 THEN
+    	IF NOT IsNull(FileSize('Currency$(scrIterPeriod).qvd')) THEN
+          Concatenate (Currency)
+          Load Distinct
+               *
+          From [Currency$(scrIterPeriod).qvd] (qvd);    
+        ENDIF
+        
+        TRACE Store Currency for $(scrIterPeriod);
+        Store Currency into [Currency$(scrIterPeriod).qvd] (qvd);
+    ENDIF
+    
+    Drop Table Currency;
+
+	Let scrIterPeriod = scrIterPeriod + 1;
+LOOP While scrIterPeriod <= scrEndYear
+
+///$tab Exit Script
+Exit Script;
+///$tab 11. Tenders
+// Tenders
+
+Set scrFile = Tenders;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+[$(scrFile)]:
+LOAD *
+	 ,YEAR(tender_datetime) 						AS tender_year
+     ,DATE(FLOOR((tender_datetime))) 				AS tender_date
+     ,IF(NOT ISNULL(tender_procuringentity_id),
+     	tender_procuringentity_id&' - '&tender_procuringentity_name,
+        	parties_procuringentity_id&' - '&parties_procuringentity_name)
+            										AS tender_procuringentity_id_name
+;
+LOAD *
+	 ,IF(NOT ISNULL(tender_tenderperiod_startdate), tender_tenderperiod_startdate,
+     	IF(NOT ISNULL(tender_tenderperiod_enddate), tender_tenderperiod_enddate,
+        	IF(NOT ISNULL(tender_awardperiod_startdate), tender_awardperiod_startdate, 
+            	IF(NOT ISNULL(tender_awardperiod_enddate), tender_awardperiod_enddate,
+                	IF(NOT ISNULL(contracts_mindate), contracts_mindate, 
+                    	'problem encountered'))))) 	AS tender_datetime
+;
+LOAD 
+	release_id										AS release_id
+	,Timestamp(tender_date)							AS tender_datemodified
+	,tender_id										AS tender_id
+	,tender_status									AS tender_status
+	,tender_mainprocurementcategory					AS tender_mainprocurementcategory
+	,procurementmethodrationale						AS procurementmethodrationale
+	,Timestamp(tender_tenderperiod_enddate)			AS tender_tenderperiod_enddate
+	,Timestamp(tender_tenderperiod_startdate)		AS tender_tenderperiod_startdate
+	,Timestamp(tender_awardperiod_enddate)			AS tender_awardperiod_enddate
+	,Timestamp(tender_awardperiod_startdate)		AS tender_awardperiod_startdate
+	,Text(tender_procuringentity_id)				AS tender_procuringentity_id
+    ,tender_procuringentity_name					AS tender_procuringentity_name
+	,Text(planning_budget_id)						AS planning_budget_id
+	,Num(planning_budget_amount)					AS planning_budget_amount
+	,planning_budget_currency						AS planning_budget_currency
+	,Text(parties_procuringentity_id)				AS parties_procuringentity_id
+    ,parties_procuringentity_name					AS parties_procuringentity_name
+	,Timestamp(contracts_mindate)					AS contracts_mindate
+WHERE NOT (	tender_status = 'planned'
+			AND
+            	(	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+            		AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                	AND ISNULL(contracts_mindate)
+                )
+            )
+;
+SELECT
+	   c.id 										AS release_id
+	   ,d.data->>'date' 							AS tender_date
+       ,d.data#>>'{tender,id}' 						AS tender_id
+	   ,d.data#>>'{tender,status}' 					AS tender_status
+	   ,d.data#>>'{tender,mainProcurementCategory}'	AS tender_mainprocurementcategory
+       ,d.data#>>'{procurementMethodRationale}'		AS procurementmethodrationale
+	   ,d.data#>>'{tender,tenderPeriod,endDate}' 	AS tender_tenderperiod_enddate
+	   ,d.data#>>'{tender,tenderPeriod,startDate}' 	AS tender_tenderperiod_startdate
+	   ,d.data#>>'{tender,awardPeriod,endDate}' 	AS tender_awardperiod_enddate
+	   ,d.data#>>'{tender,awardPeriod,startDate}' 	AS tender_awardperiod_startdate
+	   ,d.data#>>'{tender,procuringEntity,id}'		AS tender_procuringentity_id
+       ,d.data#>>'{tender,procuringEntity,name}'	AS tender_procuringentity_name
+	   ,d.data#>>'{planning,budget,id}' 			AS planning_budget_id
+	   ,d.data#>>'{planning,budget,amount,amount}' 	AS planning_budget_amount
+	   ,d.data#>>'{planning,budget,amount,currency}'AS planning_budget_currency
+	   ,parties_procuringentity_id					AS parties_procuringentity_id
+       ,parties_procuringentity_name				AS parties_procuringentity_name
+       ,contracts_mindate							AS contracts_mindate
+FROM compiled_release c
+INNER JOIN data d ON c.data_id = d.id
+
+LEFT JOIN (	SELECT c.id
+		   ,string_agg(parties.data#>>'{id}' , ', ')	AS parties_procuringentity_id
+           ,string_agg(parties.data#>>'{name}' , ', ')	AS parties_procuringentity_name
+           FROM compiled_release c
+		   INNER JOIN data d ON c.data_id = d.id 
+		   LEFT JOIN LATERAL jsonb_array_elements((d.data#>>'{parties}')::jsonb) as parties(data) on true
+           WHERE collection_id = $(scrCollectionId)
+		   --AND d.data->>'date' between '2018-01-01' and '2021-12-31 23:59:59'
+           AND d.data->>'date' > '$(scrUpdateDate)'
+		   AND parties.data#>>'{roles}' like '%procuringEntity%'
+		   GROUP BY c.id
+		   ) AS procuringEntities
+		   ON c.id = procuringEntities.id
+           
+LEFT JOIN (	SELECT c.id
+		   ,min(contract.data#>>'{dateSigned}' )	AS contracts_mindate
+           FROM compiled_release c
+		   INNER JOIN data d ON c.data_id = d.id 
+		   INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{contracts}')::jsonb) as contract(data) on true
+           WHERE collection_id = $(scrCollectionId)
+		   --AND d.data->>'date' between '2018-01-01' and '2021-12-31 23:59:59'
+           AND d.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY c.id
+		   ) AS contracts
+		   ON c.id = contracts.id
+
+WHERE
+collection_id = $(scrCollectionId)
+--AND d.data->>'date' between '2018-01-01' and '2021-12-31 23:59:59'
+AND d.data->>'date' > '$(scrUpdateDate)'
+ORDER BY c.id ASC
+;
+
+//Update last loaded date
+IF NoOfRows('$(scrFile)') > 0 THEN
+  OffsetTable:
+  Load 
+      MaxString(tender_datemodified) as UpdateDate
+  Resident $(scrFile);
+ENDIF;
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_year');
+///$tab 12. Contracts
+// Contracts
+
+Set scrFile = Contracts;
+
+Directory [$(scrTRN_QVD_PATH)];
+
+[$(scrFile)]:
+LOAD *
+	 ,YEAR(tender_datetime) 						AS tender_year
+     ,DATE(FLOOR((tender_datetime))) 				AS tender_date
+     ,IF(NOT ISNULL(award_supplier_id),
+     	award_supplier_id&' - '&award_supplier_name,
+        	'problem encountered')					AS contract_supplier_id_name
+;
+LOAD *
+	 ,IF(NOT ISNULL(tender_tenderperiod_startdate), tender_tenderperiod_startdate,
+     	IF(NOT ISNULL(tender_tenderperiod_enddate), tender_tenderperiod_enddate,
+        	IF(NOT ISNULL(tender_awardperiod_startdate), tender_awardperiod_startdate, 
+            	IF(NOT ISNULL(tender_awardperiod_enddate), tender_awardperiod_enddate,
+                	IF(NOT ISNULL(contracts_mindate), contracts_mindate, 
+                    	'problem encountered'))))) 	AS tender_datetime
+;
+LOAD 
+	 release_id										AS release_id
+	,tender_date									AS tender_datemodified
+	,tender_id										AS tender_id
+	,contract_status								AS contract_status
+	,contract_statusdetails							AS contract_statusdetails
+	,contract_id									AS contract_id
+	,contract_description							AS contract_description
+	,contract_title									AS contract_title
+	,Timestamp(contract_datesigned)					AS contract_datesigned
+	,Num(contract_value_amount)						AS contract_value_amount
+	,contract_value_currency						AS contract_value_currency
+	,Timestamp(contract_period_enddate)				AS contract_period_enddate
+	,Timestamp(contract_period_startdate)			AS contract_period_startdate
+	,award_id										AS award_id
+	,Text(award_supplier_id) 						AS award_supplier_id					
+	,award_supplier_name							AS award_supplier_name
+	,Timestamp(tender_tenderperiod_enddate)			AS tender_tenderperiod_enddate
+	,Timestamp(tender_tenderperiod_startdate)		AS tender_tenderperiod_startdate
+	,Timestamp(tender_awardperiod_enddate)			AS tender_awardperiod_enddate
+	,Timestamp(tender_awardperiod_startdate)		AS tender_awardperiod_startdate
+	,Timestamp(contracts_mindate)					AS contracts_mindate
+    ,tender_status									AS tender_status
+WHERE NOT (	tender_status = 'planned'
+        AND
+            (	ISNULL(tender_tenderperiod_enddate) AND ISNULL(tender_tenderperiod_startdate) 
+                AND ISNULL(tender_awardperiod_enddate) AND ISNULL(tender_awardperiod_startdate)
+                AND ISNULL(contracts_mindate)
+            )
+        )
+;
+SELECT
+	   c.id 										AS release_id
+	   ,d.data->>'date' 							AS tender_date
+       ,d.data#>>'{tender,id}' 						AS tender_id
+       ,d.data#>>'{tender,status}' 					AS tender_status
+	   ,contract.data->>'status' 					AS contract_status
+       ,contract.data->>'statusDetails' 			AS contract_statusdetails
+	   ,contract.data->>'id' 						AS contract_id
+       ,contract.data->>'description' 				AS contract_description
+       ,contract.data->>'title' 					AS contract_title
+       ,contract.data->>'dateSigned' 				AS contract_datesigned
+       ,contract.data#>>'{value,amount}' 			AS contract_value_amount
+	   ,contract.data#>>'{value,currency}' 			AS contract_value_currency
+       ,contract.data#>>'{period,endDate}' 			AS contract_period_enddate
+	   ,contract.data#>>'{period,startDate}' 		AS contract_period_startdate
+	   ,award.data->>'id' 							AS award_id
+	   ,supplier.data->>'id' 						AS award_supplier_id
+       ,supplier.data->>'name' 						AS award_supplier_name
+       ,d.data#>>'{tender,tenderPeriod,endDate}' 	AS tender_tenderperiod_enddate
+	   ,d.data#>>'{tender,tenderPeriod,startDate}' 	AS tender_tenderperiod_startdate
+	   ,d.data#>>'{tender,awardPeriod,endDate}' 	AS tender_awardperiod_enddate
+	   ,d.data#>>'{tender,awardPeriod,startDate}' 	AS tender_awardperiod_startdate
+       ,contracts_mindate							AS contracts_mindate
+
+FROM compiled_release c
+INNER JOIN data d ON c.data_id = d.id
+
+INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{awards}')::jsonb) as award(data) on true
+LEFT JOIN LATERAL jsonb_array_elements((award.data#>>'{suppliers}')::jsonb) as supplier(data) on true
+
+INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{contracts}')::jsonb) as contract(data) on true
+--LEFT JOIN LATERAL jsonb_array_elements((contract.data#>>'{implementation,milestones}')::jsonb) as milestones(data) on true
+
+LEFT JOIN (	SELECT c.id
+		   ,min(contract.data#>>'{dateSigned}' )	AS contracts_mindate
+           FROM compiled_release c
+		   INNER JOIN data d ON c.data_id = d.id 
+		   INNER JOIN LATERAL jsonb_array_elements((d.data#>>'{contracts}')::jsonb) as contract(data) on true
+           WHERE collection_id = $(scrCollectionId)
+		   --AND d.data->>'date' between '2018-01-01' and '2021-12-31 23:59:59'
+           AND d.data->>'date' > '$(scrUpdateDate)'
+		   GROUP BY c.id
+		   ) AS contracts
+		   ON c.id = contracts.id
+
+WHERE
+collection_id = $(scrCollectionId)
+--AND d.data->>'date' between '2018-01-01' and '2021-12-31 23:59:59'
+AND d.data->>'date' > '$(scrUpdateDate)'
+ORDER BY c.id ASC
+;
+
+//Drop technical fields which are redundant in contracts table 
+DROP FIELDS 
+tender_tenderperiod_enddate
+,tender_tenderperiod_startdate
+,tender_awardperiod_enddate
+,tender_awardperiod_startdate
+,contracts_mindate
+,tender_status
+FROM [$(scrFile)]; 
+
+//Uppend current table with previously loaded records 
+CALL QVDupdate('$(scrFile)', 'tender_id', 'tender_year');
