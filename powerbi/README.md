@@ -178,7 +178,7 @@ psql postgresql://kingfisher_collect@localhost/kingfisher_collect -c \
 
 *Source:* The Dominican Republic publishes [debarred suppliers](https://datosabiertos.dgcp.gob.do/opendata/tablas) (*proveedores inhabilitados*) in CSV format.
 
-*Update frequency:* Monthly.
+*Update frequency:* Daily.
 
 *Install:*
 
@@ -191,14 +191,7 @@ CREATE TABLE excluded_supplier (
 CREATE UNIQUE INDEX ON excluded_supplier (identifier);
 ```
 
-```bash
-curl -sS https://api.dgcp.gob.do/opendata/proveedores/proveedores_inhabilitados.csv | grep -Eo '^[0-9]+,' | sed -E 's/^(.+),$/DO-RPE-\1/' | sort -u > /tmp/excluded_supplier.csv
-```
-
-```bash
-psql postgresql://kingfisher_collect@localhost/kingfisher_collect -c \
-"\copy excluded_supplier (identifier) FROM stdin DELIMITER ',' CSV HEADER;" < /tmp/excluded_supplier.csv
-```
+The table is updated via [cron](https://github.com/open-contracting/deploy/blob/main/salt/cron/files/do_excluded_supplier.sh).
 
 ## Ecuador (EC)
 
