@@ -68,7 +68,7 @@ psql postgresql://kingfisher_collect@localhost/kingfisher_collect -c \
 
 *Update frequency:* As needed, when new indicators are implemented.
 
-*Install:*
+*Install:* Upload the `indicator.csv` file from this repository to `/tmp/indicator.csv`.
 
 ```sql
 CREATE TABLE indicator (
@@ -87,19 +87,7 @@ CREATE UNIQUE INDEX ON indicator (code);
 
 ```console
 $ psql postgresql://kingfisher_collect@localhost/kingfisher_collect -c \
-"\copy indicator (code,category,title,description,category_es,title_es,description_es) FROM stdin DELIMITER ',' CSV HEADER;"
-code,category,title,description,category_es,title_es,description_es
-R023,Collusion detection,Fixed-multiple bid prices,The percentage difference between two tenderers' bid prices is the same in different contracting processes,Detección de colusión,Diferencia similar entre precios de oferta,La diferencia porcentual entre los precios de oferta de dos oferentes es la misma en distintos procesos de contratación
-R024,Collusion detection,Price close to winning bid,The percentage difference between the winning bid and the second-lowest valid bid is a low outlier,Detección de colusión,Precio cercano a la oferta ganadora,La diferencia porcentual entre la oferta ganadora y la segunda oferta válida más baja es un valor atípico bajo
-R025,Collusion detection,Excessive unsuccessful bids,The ratio of winning bids to submitted bids for a top tenderer is a low outlier,Detección de colusión,Número excesivo de ofertas no exitosas,La relación entre las ofertas ganadoras y las presentadas por un oferente es un valor atípico bajo
-R035,Risks to suppliers,All except winning bid disqualified,Bids are disqualified if not submitted by the single tenderer of the winning bid,Riesgos de adjudicación,Todas las ofertas son descalificadas excepto la ganadora,Las ofertas presentadas son descalificadas excepto la  ganadora
-R036,Risks to suppliers,Lowest bid disqualified,"The lowest submitted bid is disqualified, while the award criterion is price only",Riesgos de adjudicación,Oferta más baja descalificada,La oferta más baja es descalificada cuando el criterio de adjudicación es solo precio
-R038,Risks to suppliers,Excessive disqualified bids,"The ratio of disqualified bids to submitted bids is a high outlier per buyer, procuring entity or tenderer",Riesgos de adjudicación,Alto número de ofertas descalificadas,La relación de ofertas descalificadas y las presentadas es un valor atípico alto para un comprador o un oferente
-R028,Collusion detection,Identical bid prices,Two bids submitted by different tenderers have the same price,Detección de colusión,Precios de oferta idénticos,Dos ofertas presentadas por diferentes oferentes tienen el mismo precio
-R030,Risks to suppliers,Late bid won,The winning bid was received after the submission deadline,Riesgos de adjudicación,Oferta tardía gana,La oferta ganadora fue recibida después de la fecha límite de presentación
-R048,Risks to suppliers,Heterogeneous supplier,The variety of items supplied by a tenderer is a high outlier,Riesgos de adjudicación,Proveedor multipropósito,La variedad de artículos suministrados por un oferente es un valor atípico alto
-R058,Collusion detection,Heavily discounted bid,The percentage difference between the winning bid and the second-lowest valid bid is a high outlier,Detección de colusión,Oferta con precio muy bajo,La diferencia porcentual entre la oferta ganadora y la segunda oferta válida más baja es un valor atípico alto
-\.
+"\copy indicator (code,category,title,description,category_es,title_es,description_es) FROM stdin DELIMITER ',' CSV HEADER;" < /tmp/indicator.csv
 ```
 
 ### `codelist` table
@@ -108,7 +96,7 @@ R058,Collusion detection,Heavily discounted bid,The percentage difference betwee
 
 *Update frequency:* As needed, when new codes need translations.
 
-*Install:*
+*Install:* Upload the `codelist.csv` file from this repository to `/tmp/codelist.csv`.
 
 ```sql
 CREATE TABLE codelist (
@@ -123,25 +111,7 @@ CREATE UNIQUE INDEX ON codelist (codelist, code);
 
 ```console
 $ psql postgresql://kingfisher_collect@localhost/kingfisher_collect -c \
-"\copy codelist (codelist,code,code_es) FROM stdin DELIMITER ',' CSV HEADER;"
-codelist,code,code_es
-method,open,abierto
-method,selective,selectivo
-method,limited,limitado
-method,direct,directo
-tenderStatus,pending,pendiente
-tenderStatus,active,activo
-tenderStatus,cancelled,cancelado
-tenderStatus,unsuccessful,sin éxito
-bidStatus,pending,pendiente
-bidStatus,valid,calificada
-bidStatus,disqualified,descalificada
-bidStatus,InTreatment,pendiente
-bidStatus,Qualified,calificada
-bidStatus,Disqualified,descalificada
-partyRole,bidder,oferente
-partyRole,supplier,proveedor
-\.
+"\copy codelist (codelist,code,code_es) FROM stdin DELIMITER ',' CSV HEADER;" < /tmp/codelist.csv
 ```
 
 ## Dominican Republic (DO)
