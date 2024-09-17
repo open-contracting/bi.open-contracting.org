@@ -1,15 +1,10 @@
-FROM alpine:latest
+FROM rust:alpine as builder
+RUN apk add musl-dev
+RUN rustup default nightly
+WORKDIR /app
+COPY cardinal-rs .
+RUN RUSTFLAGS="-Zon-broken-pipe=kill" cargo build --release
 
-WORKDIR /workdir
-
-COPY cardinal-rs/Cargo.toml Cargo.toml
-COPY cardinal-rs/build.rs build.rs
-COPY cardinal-rs/src src
-
-RUN apk add --no-cache --virtual .build-deps build-base curl && \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly && \
-    . "$HOME/.cargo/env" && \
-    RUSTFLAGS="-Zon-broken-pipe=kill" cargo install --path . && \
-    apk --purge del .build-deps
-
-ENV PATH="/root/.cargo/bin:$PATH"
+FROM scratch
+COPY --from=builder /app/target/release/ocdscardinal /
+ENTRYPOINT ["./ocdscardinal"]

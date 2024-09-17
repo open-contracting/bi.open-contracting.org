@@ -14,5 +14,5 @@ Running `make` builds two images:
 - `cardinal`, for running `ocdscardinal` commands, like
 
   ```bash
-  docker run --rm --name cardinal-rs cardinal-rs ocdscardinal --help
+  docker run --rm --name cardinal-rs cardinal-rs --help
   ```
