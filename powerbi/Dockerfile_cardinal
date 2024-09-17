@@ -1,0 +1,15 @@
+FROM alpine:latest
+
+WORKDIR /workdir
+
+COPY cardinal-rs/Cargo.toml Cargo.toml
+COPY cardinal-rs/build.rs build.rs
+COPY cardinal-rs/src src
+
+RUN apk add --no-cache --virtual .build-deps build-base curl && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly && \
+    . "$HOME/.cargo/env" && \
+    RUSTFLAGS="-Zon-broken-pipe=kill" cargo install --path . && \
+    apk --purge del .build-deps
+
+ENV PATH="/root/.cargo/bin:$PATH"
