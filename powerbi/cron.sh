@@ -10,7 +10,7 @@ WORKDIR=$(dirname "$0")
 
 docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect --add-host=host.docker.internal:host-gateway kingfisher-collect \
     scrapy crawl ecuador_sercop_bulk \
-    -a crawl_time=2015-01-01T00:00:00 -a from_date=2024-09 \
+    -a crawl_time=2015-01-01T00:00:00 \
     -s "FILES_STORE=/workdir/data" \
     -s "DATABASE_URL=postgresql://$CARDINAL_DBUSER@$CARDINAL_DBHOST_DOCKER:5432/$CARDINAL_DBNAME" \
     --logfile="/workdir/logs/ecuador_sercop_bulk-$(date +%F).log"

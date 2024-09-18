@@ -1,6 +1,6 @@
 # Power BI
 
-This directory contains files to support deploying [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker. It replicates the configuration in the [incremental](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/incremental.sls) state from the [deploy](https://ocdsdeploy.readthedocs.io/en/latest/) repository.
+This directory contains files to support deploying [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
 The `Makefile` makes this easy to setup. You can configure it by changing the variables in `config.mk`.
 
@@ -77,3 +77,7 @@ Add the crontab entry:
 ```bash
 make -s print-crontab | crontab
 ```
+
+## Reference
+
+This process replicates the configuration in the [incremental](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/incremental.sls) state from the [deploy](https://ocdsdeploy.readthedocs.io/en/latest/) repository.
