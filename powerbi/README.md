@@ -10,6 +10,13 @@ To print the commands that a `make` target would execute, use the `-n` (`--dry-r
 make -n database
 ```
 
+To run all targets (setup the database and filesystem, build the images, and install the crontab), run:
+
+```bash
+make -s
+make -s print-crontab | crontab
+```
+
 ## PostgreSQL
 
 Run `make database` as a local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) privilege (for example, as the `postgres` user):
@@ -24,6 +31,19 @@ This will:
 - Create a user (`cardinal`, by default), if it doesn't exist
 - Create the `ecuador_sercop_bulk_result` table, owned by the user, if it doesn't exist
 - Create (or re-create) the `codelist`, `indicator` and `cpc` tables, owned by the user
+
+## Filesystem
+
+Run `make filesystem` from the working directory for the project.
+
+```bash
+make -s filesystem
+```
+
+This will:
+
+- Create `data`, `logs` and `scratch` directories
+- Download Cardinal's settings file to `ecuador_sercop_bulk.ini`
 
 ## Docker
 

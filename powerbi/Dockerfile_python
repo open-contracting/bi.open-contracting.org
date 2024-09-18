@@ -2,9 +2,11 @@ FROM python:3.10-alpine
 
 COPY kingfisher-collect/requirements.txt /tmp/requirements.txt
 
-RUN apk add --no-cache --virtual .build-deps build-base libffi-dev postgresql-dev && \
+RUN apk add --no-cache --virtual .build-deps build-base libffi-dev libpq-dev && \
     pip install --no-cache-dir -r /tmp/requirements.txt && \
     apk --purge del .build-deps
+
+RUN apk add libpq
 
 COPY kingfisher-collect/kingfisher_scrapy kingfisher_scrapy
 COPY kingfisher-collect/scrapy.cfg scrapy.cfg

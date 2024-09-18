@@ -1,4 +1,5 @@
 DATABASE_NAME=cardinal
 DATABASE_USER=cardinal
 DATABASE_HOST=localhost
+DATABASE_HOST_DOCKER=host.docker.internal
 CARDINAL_WORKDIR=/absolute/path/workdir

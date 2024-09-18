@@ -111,17 +111,29 @@ data:
 logs:
 	mkdir -p logs
 
-tmp:
-	mkdir -p tmp
+scratch:
+	mkdir -p scratch
 
 ecuador_sercop_bulk.ini:
 	curl -sSLO https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/cardinal/ecuador_sercop_bulk.ini
 
-filesystem: data logs tmp ecuador_sercop_bulk.ini
+filesystem: data logs scratch ecuador_sercop_bulk.ini
 
 .PHONY: print-crontab
 print-crontab:
-	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) $(CARDINAL_WORKDIR)/cron.sh"
+	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) CARDINAL_DBHOST_DOCKER=$(DATABASE_HOST_DOCKER) $(CARDINAL_WORKDIR)/cron.sh"
+
+.PHONY: clean
+clean:
+	rm -rf kingfisher-collect
+	rm -rf cardinal-rs
+	rm -f ecuador_sercop_bulk.ini
+
+.PHONY: force-clean
+force-clean: clean
+	rm -rf data
+	rm -rf logs
+	rm -rf scratch
 
 .PHONY: all
-all: build database filesystem print-crontab
+all: build database filesystem
