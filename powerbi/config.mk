@@ -1,0 +1,3 @@
+DATABASE_USER=cardinal
+DATABASE_NAME=cardinal
+DATABASE_HOST=localhost
