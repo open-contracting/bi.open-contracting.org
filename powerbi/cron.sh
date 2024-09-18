@@ -36,7 +36,7 @@ docker run -v "$WORKDIR:/workdir" --rm --name cardinal-rs cardinal-rs \
     -s /workdir/ecuador_sercop_bulk.ini \
     --map \
     /workdir/scratch/ecuador_sercop_bulk.out.jsonl \
-    > $WORKDIR/scratch/ecuador_sercop_bulk.json
+    > "$WORKDIR/scratch/ecuador_sercop_bulk.json"
 
 # This appends to the CSV file, to keep flags consistent over time. Delete it manually if results are incorrect.
 docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect kingfisher-collect \
