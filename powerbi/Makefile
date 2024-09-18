@@ -102,5 +102,26 @@ ecuador_sercop_bulk_result: createdb createuser
 		created_at timestamp without time zone \
 	)'
 
-.PHONY: db
-db: codelist cpc indicator ecuador_sercop_bulk_result
+.PHONY: database
+database: codelist cpc indicator ecuador_sercop_bulk_result
+
+data:
+	mkdir -p data
+
+logs:
+	mkdir -p logs
+
+tmp:
+	mkdir -p tmp
+
+ecuador_sercop_bulk.ini:
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/cardinal/ecuador_sercop_bulk.ini
+
+filesystem: data logs tmp ecuador_sercop_bulk.ini
+
+.PHONY: print-crontab
+print-crontab:
+	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) $(CARDINAL_WORKDIR)/cron.sh"
+
+.PHONY: all
+all: build database filesystem print-crontab

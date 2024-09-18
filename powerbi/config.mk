@@ -1,3 +1,4 @@
-DATABASE_USER=cardinal
 DATABASE_NAME=cardinal
+DATABASE_USER=cardinal
 DATABASE_HOST=localhost
+CARDINAL_WORKDIR=/absolute/path/workdir

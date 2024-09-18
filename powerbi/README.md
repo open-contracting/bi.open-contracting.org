@@ -7,15 +7,15 @@ The `Makefile` makes this easy to setup. You can configure it by changing the va
 To print the commands that a `make` target would execute, use the `-n` (`--dry-run`) option. For example:
 
 ```bash
-make -n db
+make -n database
 ```
 
 ## PostgreSQL
 
-Run `make db` as a local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) privilege (for example, as the `postgres` user):
+Run `make database` as a local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) privilege (for example, as the `postgres` user):
 
 ```bash
-make -s db
+make -s database
 ```
 
 This will:
@@ -27,7 +27,7 @@ This will:
 
 ## Docker
 
-Running `make build` builds two images:
+Run `make build` to build two images:
 
 - `kingfisher-collect`, for running `scrapy` and `manage.py` commands, like:
 
@@ -42,10 +42,18 @@ Running `make build` builds two images:
   docker run --rm --name cardinal-rs cardinal-rs --help
   ```
 
+This clones the `kingfisher-collect` and `cardinal-rs` repositories into the current directory.
+
 ## Cron
 
-Add a crontab entry, after updating the path. For example:
+Preview the crontab entry:
 
 ```bash
-echo "15 0 * * * /path/to/bin/cron.sh" | crontab
+make -s print-crontab
+```
+
+Add the crontab entry:
+
+```bash
+make -s print-crontab | crontab
 ```
