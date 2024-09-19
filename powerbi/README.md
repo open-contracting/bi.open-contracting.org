@@ -39,7 +39,7 @@ Lastly, edit the `config.mk` file, as needed.
 
 ## Database
 
-Run `make database` as a local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) privilege (for example, as the `postgres` user):
+Run `make database` as any local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) PostgreSQL privilege (for example, as the `postgres` user), from any directory that contains the `Makefile`, to which the local user has read and execute permissions.
 
 ```bash
 make -s database
@@ -68,22 +68,9 @@ This assumes that the local user can authenticate with PostgreSQL without a pass
   localhost:5432:cardinal:cardinal:strong-password
   ```
 
-## Filesystem
-
-Run `make filesystem` from the working directory (the `CARDINAL_WORKDIR` configuration) for the project, as the local user that will run the cron job:
-
-```bash
-make -s filesystem
-```
-
-This will:
-
-- Create `data`, `logs` and `scratch` directories, owned by the local user, if they don't exist
-- Download Cardinal's settings file to `ecuador_sercop_bulk.ini`, owned by the local user
-
 ## Docker
 
-Run `make build` from any directory (that contains the `Makefile`).
+Run `make build` as any local user, from any directory that contains the `Makefile`, to which the local user has read, write and execute permissions.
 
 This will:
 
@@ -104,6 +91,19 @@ The `cardinal-rs` image is for running `ocdscardinal` commands, like:
 ```bash
 docker run --rm --name cardinal-rs cardinal-rs --help
 ```
+
+## Filesystem
+
+Run `make filesystem` from the working directory (the `CARDINAL_WORKDIR` configuration) for the project, as the local user that will run the cron job:
+
+```bash
+make -s filesystem
+```
+
+This will:
+
+- Create `data`, `logs` and `scratch` directories, owned by the local user, if they don't exist
+- Download Cardinal's settings file to `ecuador_sercop_bulk.ini`, owned by the local user
 
 ## Cron
 
