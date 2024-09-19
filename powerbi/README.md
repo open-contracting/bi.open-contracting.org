@@ -39,7 +39,7 @@ Lastly, edit the `config.mk` file, as needed.
 
 ## Database
 
-Run `make database` as any local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) PostgreSQL privilege (for example, as the `postgres` user), from any directory that contains the `Makefile`, to which the local user has read and execute permissions.
+Run `make database` as any local user with the [CREATEDB](https://www.postgresql.org/docs/current/sql-createrole.html) PostgreSQL privilege (for example, as the `postgres` user), from any directory that contains the `Makefile` and `config.mk` files, to which the local user has read and execute permissions.
 
 ```bash
 make -s database

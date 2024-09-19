@@ -135,7 +135,7 @@ ecuador_sercop_bulk.ini:
 filesystem: data logs scratch ecuador_sercop_bulk.ini
 
 .PHONY: print-crontab
-print-crontab:
+print-crontab: cron.sh
 	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) CARDINAL_DBHOST_DOCKER=$(DATABASE_HOST_DOCKER) $(CARDINAL_WORKDIR)/cron.sh"
 
 .PHONY: clean-build
