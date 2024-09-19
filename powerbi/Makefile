@@ -64,13 +64,7 @@ codelist: createdb createuser
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/codelist.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS codelist' \
-		-c 'CREATE TABLE codelist ( \
-			id serial PRIMARY KEY, \
-			codelist text, \
-			code text, \
-			code_es text, \
-			UNIQUE (codelist, code) \
-		)' \
+		-c 'CREATE TABLE codelist (id serial PRIMARY KEY, codelist text, code text, code_es text, UNIQUE (codelist, code))' \
 		-c '\copy codelist (codelist, code, code_es) from stdin csv header'
 
 .PHONY: cpc
@@ -78,12 +72,7 @@ cpc: createdb createuser
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/cpc.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS cpc' \
-		-c 'CREATE TABLE cpc ( \
-			id serial PRIMARY KEY, \
-			code text UNIQUE, \
-			description text, \
-			description_es text \
-		)' \
+		-c 'CREATE TABLE cpc (id serial PRIMARY KEY, code text UNIQUE, description text, description_es text)' \
 		-c '\copy cpc (code, description, description_es) from stdin csv header'
 
 .PHONY: indicator
@@ -91,31 +80,13 @@ indicator: createdb createuser
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/indicator.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS indicator' \
-		-c 'CREATE TABLE indicator ( \
-			id serial PRIMARY KEY, \
-			code text UNIQUE, \
-			category text, \
-			title text, \
-			description text, \
-			category_es text, \
-			title_es text, \
-			description_es text \
-		)' \
+		-c 'CREATE TABLE indicator (id serial PRIMARY KEY, code text UNIQUE, category text, title text, description text, category_es text, title_es text, description_es text)' \
 		-c '\copy indicator (code, category, title, description, category_es, title_es, description_es) from stdin csv header'
 
 .PHONY: ecuador_sercop_bulk_result
 ecuador_sercop_bulk_result: createdb createuser
-	psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -c 'CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result ( \
-		id serial PRIMARY KEY, \
-		ocid text, \
-		subject text, \
-		code text, \
-		result numeric, \
-		buyer_id text, \
-		procuring_entity_id text, \
-		tenderer_id text, \
-		created_at timestamp without time zone \
-	)'
+	psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) \
+		-c 'CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result (id serial PRIMARY KEY, ocid text, subject text, code text, result numeric, buyer_id text, procuring_entity_id text, tenderer_id text, created_at timestamp without time zone)'
 
 .PHONY: database
 database: codelist cpc indicator ecuador_sercop_bulk_result
