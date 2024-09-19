@@ -11,11 +11,26 @@ FORCE:
 
 include config.mk
 
+config.mk:
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/config.mk
+
+cron.sh:
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cron.sh
+
+.PHONY: setup
+setup: config.mk cron.sh
+
 kingfisher-collect:
 	git clone https://github.com/open-contracting/kingfisher-collect.git
 
 cardinal-rs:
 	git clone https://github.com/open-contracting/cardinal-rs.git
+
+Dockerfile_cardinal:
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Dockerfile_cardinal
+
+Dockerfile_python:
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Dockerfile_python
 
 .PHONY: pull-kingfisher-collect
 pull-kingfisher-collect: kingfisher-collect
@@ -26,11 +41,11 @@ pull-cardinal-rs: cardinal-rs
 	git -C cardinal-rs pull --rebase
 
 .PHONY: build-python
-build-python: pull-kingfisher-collect pull-cardinal-rs
+build-python: pull-kingfisher-collect pull-cardinal-rs Dockerfile_python
 	docker build --file Dockerfile_python --tag kingfisher-collect .
 
 .PHONY: build-cardinal
-build-cardinal: pull-cardinal-rs
+build-cardinal: pull-cardinal-rs Dockerfile_cardinal
 	docker build --file Dockerfile_cardinal --tag cardinal-rs .
 
 .PHONY: build
@@ -123,14 +138,14 @@ filesystem: data logs scratch ecuador_sercop_bulk.ini
 print-crontab:
 	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) CARDINAL_DBHOST_DOCKER=$(DATABASE_HOST_DOCKER) $(CARDINAL_WORKDIR)/cron.sh"
 
-.PHONY: clean
-clean:
+.PHONY: clean-build
+clean-build:
 	rm -rf kingfisher-collect
 	rm -rf cardinal-rs
-	rm -f ecuador_sercop_bulk.ini
 
 .PHONY: force-clean
-force-clean: clean
+force-clean: clean-build
+	rm -f ecuador_sercop_bulk.ini
 	rm -rf data
 	rm -rf logs
 	rm -rf scratch
