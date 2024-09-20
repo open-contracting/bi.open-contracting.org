@@ -2,7 +2,7 @@
 
 Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
-The <Makefile> makes this easy to setup. You can configure it by changing the settings in the <config.mk> file.
+The [Makefile](Makefile) makes this easy to setup. You can configure it by changing the settings in the [config.mk](config.mk) file.
 
 All commands assume that the current directory is the "working directory" for the project.
 
