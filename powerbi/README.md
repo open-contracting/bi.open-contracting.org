@@ -63,17 +63,19 @@ Run `make -s createdb createuser` to:
 This must be run:
 
 - by any operating system user,
-- that can authenticate as the **maintenance database user** without a password,
 - from any directory containing the `Makefile` and `config.mk` files,
 - to which the operating system user has read and execute permissions.
 
-The simplest option is to run this command as the `postgres` operating system user, since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as the `postgres` database user to all databases.
+The simplest option is to run this command as the `postgres` operating system user, which has the necessary privileges.
 
-Otherwise, you can, for example, create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`chmod 400`). For example:
+This command requires you to authenticate as the **maintenance database user**. Either enter the password when prompted, or, to skip the password prompt:
 
-```none
-localhost:5432:maintenance-database-name:maintenance-database-user:strong-password
-```
+- Run the command as the `postgres` operating system user, since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-g-hba-conf.html) file allows local `peer` connections as the `postgres` database user to all databases.
+- Create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`chmod 400`). For example:
+
+  ```none
+  localhost:5432:maintenance-database-name:maintenance-database-user:strong-password
+  ```
 
 ### Create tables
 
@@ -85,17 +87,17 @@ Run `make -s tables` to:
 This must be run:
 
 - by any operating system user,
-- that can authenticate as the **project database user** without a password,
 - from any directory containing the `Makefile` and `config.mk` files,
 - to which the operating system user has read and execute permissions.
 
-The simplest option is to set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
+This command requires you to authenticate as the **project database user**. Either enter the password when prompted, or, to skip the password prompt:
 
-Otherwise, you can, for example, create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
+- Set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
+- Create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
 
-```none
-localhost:5432:project-database-name:project-database-user:strong-password
-```
+  ```none
+  localhost:5432:project-database-name:project-database-user:strong-password
+  ```
 
 ## Docker
 
@@ -111,6 +113,8 @@ This must be run:
 - by any operating system user,
 - from any directory containing the `Makefile`,
 - to which the user has read, write and execute permissions.
+
+This command requires you to have write permission to the [Docker daemon's Unix socket](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user), which is owned by the `root` user and `docker` group. Either run the command with `sudo`, or add the operating system user to the `docker` group.
 
 The `kingfisher-collect` image is for running `scrapy` and `manage.py` commands, like:
 
