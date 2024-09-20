@@ -29,13 +29,13 @@ make -s print-crontab | crontab
 
 ## Setup
 
-Download the `Makefile` to the current directory:
+Download the [Makefile](Makefile) to the current directory:
 
 ```bash
 curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Makefile
 ```
 
-Download the `config.mk` and `cron.sh` files to the current directory, if they don't exist:
+Download the [config.mk](config.mk) and [cron.sh](cron.sh) files to the current directory, if they don't exist:
 
 ```bash
 make setup
@@ -101,8 +101,8 @@ localhost:5432:project-database-name:project-database-user:strong-password
 
 Run `make build` to:
 
-- Clone the `kingfisher-collect` and `cardinal-rs` repositories into the current directory, if they don't exist
-- Download the `Dockerfile_cardinal` and `Dockerfile_python` files to the current directory, if they don't exist
+- Clone the [kingfisher-collect](https://github.com/open-contracting/kingfisher-collect) and [cardinal-rs](https://github.com/open-contracting/cardinal-rs) repositories into the current directory, if they don't exist
+- Download the [Dockerfile_cardinal](Dockerfile_cardinal) and [Dockerfile_python](Dockerfile_python) files to the current directory, if they don't exist
 - Pull changes for the `kingfisher-collect` and `cardinal-rs` repositories
 - Build the `kingfisher-collect` and `cardinal-rs` images
 
@@ -130,7 +130,7 @@ docker run --rm --name cardinal-rs cardinal-rs --help
 Run `make -s filesystem` to:
 
 - Create `data`, `logs` and `scratch` directories, owned by the current operating system user, if they don't exist
-- Download Cardinal's settings file to `ecuador_sercop_bulk.ini`, owned by the current operating system user
+- Download [Cardinal's settings file](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/files/cardinal/ecuador_sercop_bulk.ini) to `ecuador_sercop_bulk.ini`, owned by the current operating system user
 
 This must be run:
 
