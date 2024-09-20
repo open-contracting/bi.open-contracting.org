@@ -15,7 +15,7 @@ docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect --add-host=host
     -s "DATABASE_URL=postgresql://$CARDINAL_DBUSER@$CARDINAL_DBHOST_DOCKER:5432/$CARDINAL_DBNAME" \
     --logfile="/workdir/logs/ecuador_sercop_bulk-$(date +%F).log"
 
-psql -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -t \
+psql "$CARDINAL_DBNAME" -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -t \
     -c 'SELECT data FROM ecuador_sercop_bulk' \
     -o "$WORKDIR/scratch/ecuador_sercop_bulk.jsonl"
 
@@ -44,7 +44,7 @@ docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect kingfisher-coll
     -q /workdir/scratch/ecuador_sercop_bulk.json \
     /workdir/scratch/ecuador_sercop_bulk.csv
 
-psql -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -q \
+psql "$CARDINAL_DBNAME" -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -q \
     -c "BEGIN" \
     -c "DROP TABLE IF EXISTS ecuador_sercop_bulk_clean" \
     -c "CREATE TABLE ecuador_sercop_bulk_clean (data jsonb)" \
@@ -53,7 +53,7 @@ psql -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -q \
     -c "END" \
     < "$WORKDIR/scratch/ecuador_sercop_bulk.out.jsonl"
 
-psql -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -q \
+psql "$CARDINAL_DBNAME" -U "$CARDINAL_DBUSER" -h "$CARDINAL_DBHOST" -q \
     -c "BEGIN" \
     -c "DROP TABLE IF EXISTS ecuador_sercop_bulk_result" \
     -c "CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result (id serial PRIMARY KEY, ocid text, subject text, code text, result numeric, buyer_id text, procuring_entity_id text, tenderer_id text, created_at timestamp without time zone)" \
