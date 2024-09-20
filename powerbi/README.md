@@ -49,16 +49,16 @@ These commands connect to the PostgreSQL host set by the `DATABASE_HOST` setting
 
 ### Create database and user
 
-This step requires a PostgreSQL **maintenance database user** (the `MAINTENANCE_DATABASE_USER` setting, by default the name of the current operating system user) with the privileges:
+This step requires a PostgreSQL **maintenance database user** (`MAINTENANCE_DATABASE_USER` setting, by default the name of the current operating system user) with the privileges:
 
 - [`CREATEDB`](https://www.postgresql.org/docs/current/sql-createrole.html) database privilege
 - `CREATEROLE` database privilege
-- [`CONNECT`](https://www.postgresql.org/docs/current/ddl-priv.html) object privilege to the **maintenance database** (the `MAINTENANCE_DATABASE_NAME` setting, by default `postgres`)
+- [`CONNECT`](https://www.postgresql.org/docs/current/ddl-priv.html) object privilege to the **maintenance database** (`MAINTENANCE_DATABASE_NAME` setting, by default `postgres`)
 
 Run `make -s createdb createuser` to:
 
-- Create the **project database** (the `DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
-- Create the **project database user** (the `DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
+- Create the **project database** (`DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
+- Create the **project database user** (`DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
 
 This must be run:
 
