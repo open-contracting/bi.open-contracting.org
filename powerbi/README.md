@@ -6,7 +6,7 @@ The [Makefile](Makefile) makes this easy to setup. You can configure it by chang
 
 All commands assume that the current directory is the "working directory" for the project.
 
-You must choose an operating system user with read, write and execute permissions to the working directory (`chmod 700`, at least). For simplicity, you p:
+You must choose an operating system user with read, write and execute permissions to the working directory (`chmod 700`, at least). For simplicity, you can:
 
 - Name the operating system user the same as the database user (`DATABASE_USER` setting)
 - Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` setting)
