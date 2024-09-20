@@ -21,9 +21,6 @@ docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect \
 psql "$DATABASE_URL" -t \
     -c 'SELECT data FROM ecuador_sercop_bulk' \
     -o "$WORKDIR/scratch/ecuador_sercop_bulk.jsonl"
-if [ -z "$CARDINAL_DEBUG" ]; then
-    psql "$DATABASE_URL" -q -c 'DROP TABLE ecuador_sercop_bulk'
-fi
 
 docker run -v "$WORKDIR:/workdir" --rm --name cardinal-rs cardinal-rs \
     prepare \

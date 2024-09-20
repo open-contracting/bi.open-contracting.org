@@ -188,6 +188,22 @@ If you need to start over, delete the cron job manually. Then, delete the `ecuad
 make force-clean
 ```
 
+## Disk usage
+
+Kingfisher Collect writes:
+
+- data files to the `data/` directory (>20GB). This directory must not be deleted; otherwise, contracting processes are lost, because Kingfisher Collect downloads only new files.
+- data to the `ecuador_sercop_bulk` table (~10GB). This table must not be dropped; otherwise, Kingfisher Collect re-downloads all old files, instead of only new files.
+- log files to the `logs/` directory (<10MB each). To control disk usage, set up log rotation on this directory.
+
+The [cron job](#cron) writes:
+
+- contracting processes to the `ecuador_sercop_bulk_clean` table (~10GB). This table is read by Power BI.
+- indicator results to the `ecuador_sercop_bulk_result` table (~50MB). This table is read by Power BI.
+- temporary files (~15GB), that are deleted by the end of the script.
+
+As such, the project requires about 50GB for both permanent and temporary data.
+
 ## Reference
 
 This process replicates the configuration in the [`incremental`](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/incremental.sls) state from the [`deploy`](https://ocdsdeploy.readthedocs.io/en/latest/) repository.
