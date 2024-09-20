@@ -2,7 +2,7 @@
 
 Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
-The [Makefile](Makefile) makes this easy to setup. You can configure it by changing the settings in the [config.mk](config.mk) file.
+The [`Makefile`](Makefile) makes this easy to setup. You can configure it by changing the settings in the [`config.mk`](config.mk) file.
 
 All commands assume that the current directory is the "working directory" for the project.
 
@@ -29,13 +29,13 @@ make -s print-crontab | crontab
 
 ## Setup
 
-Download the [Makefile](Makefile) to the current directory:
+Download the [`Makefile`](Makefile) to the current directory:
 
 ```bash
 curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Makefile
 ```
 
-Download the [config.mk](config.mk) and [cron.sh](cron.sh) files to the current directory, if they don't exist:
+Download the [`config.mk`](config.mk) and [`cron.sh`](cron.sh) files to the current directory, if they don't exist:
 
 ```bash
 make setup
@@ -70,8 +70,8 @@ The simplest option is to run this command as the `postgres` operating system us
 
 This command requires you to authenticate as the **maintenance database user**. Either enter the password when prompted, or, to skip the password prompt:
 
-- Run the command as the `postgres` operating system user, since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-g-hba-conf.html) file allows local `peer` connections as the `postgres` database user to all databases.
-- Create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`chmod 400`). For example:
+- Run the command as the `postgres` operating system user, since the default [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-g-hba-conf.html) file allows local `peer` connections as the `postgres` database user to all databases.
+- Create a [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`chmod 400`). For example:
 
   ```none
   localhost:5432:maintenance-database-name:maintenance-database-user:strong-password
@@ -92,8 +92,8 @@ This must be run:
 
 This command requires you to authenticate as the **project database user**. Either enter the password when prompted, or, to skip the password prompt:
 
-- Set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
-- Create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
+- Set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
+- Create a [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
 
   ```none
   localhost:5432:project-database-name:project-database-user:strong-password
@@ -103,8 +103,8 @@ This command requires you to authenticate as the **project database user**. Eith
 
 Run `make build` to:
 
-- Clone the [kingfisher-collect](https://github.com/open-contracting/kingfisher-collect) and [cardinal-rs](https://github.com/open-contracting/cardinal-rs) repositories into the current directory, if they don't exist
-- Download the [Dockerfile_cardinal](Dockerfile_cardinal) and [Dockerfile_python](Dockerfile_python) files to the current directory, if they don't exist
+- Clone the [`kingfisher-collect`](https://github.com/open-contracting/kingfisher-collect) and [`cardinal-rs`](https://github.com/open-contracting/cardinal-rs) repositories into the current directory, if they don't exist
+- Download the [`Dockerfile_cardinal`](Dockerfile_cardinal) and [`Dockerfile_python`](Dockerfile_python) files to the current directory, if they don't exist
 - Pull changes for the `kingfisher-collect` and `cardinal-rs` repositories
 - Build the `kingfisher-collect` and `cardinal-rs` images
 
@@ -176,4 +176,4 @@ make force-clean
 
 ## Reference
 
-This process replicates the configuration in the [incremental](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/incremental.sls) state from the [deploy](https://ocdsdeploy.readthedocs.io/en/latest/) repository.
+This process replicates the configuration in the [`incremental`](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/incremental.sls) state from the [`deploy`](https://ocdsdeploy.readthedocs.io/en/latest/) repository.
