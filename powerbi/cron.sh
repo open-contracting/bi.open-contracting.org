@@ -27,7 +27,7 @@ docker run -v "$WORKDIR:/workdir" --rm --name cardinal-rs cardinal-rs \
     /workdir/scratch/ecuador_sercop_bulk.jsonl
 
 if [ -s "$WORKDIR/scratch/ecuador_sercop_bulk.err.csv" ]; then
-    echo "$WORKDIR/scratch/ecuador_sercop_bulk.jsonl contains new errors"
+    echo "$WORKDIR/scratch/ecuador_sercop_bulk.err.csv contains new errors"
     exit 1
 fi
 
