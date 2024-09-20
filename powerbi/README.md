@@ -35,21 +35,21 @@ Download the [`Makefile`](Makefile) to the current directory:
 curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Makefile
 ```
 
-Download the [`config.mk`](config.mk) and [`cron.sh`](cron.sh) files to the current directory, if they don't exist:
+Download the [`config.mk`](config.mk), [`cron.sh`](cron.sh) and [`env.list`](env.list) files to the current directory, if they don't exist, and restrict permissions to the `env.list` file (`chmod go-rwx`):
 
 ```bash
 make setup
 ```
 
-Lastly, edit the `config.mk` file, as needed.
+Lastly, edit the `config.mk` and `env.list` files. At minimum, set the `DATABASE_PASSWORD` setting in the `env.list` file to a [strong password](https://www.lastpass.com/features/password-generator).
 
-## Database
+## Database (PostgreSQL)
 
-These commands connect to the PostgreSQL host set by the `DATABASE_HOST` setting, by default `localhost`.
+These commands connect to the database server set by the `DATABASE_HOST` setting, by default `localhost`, on the port set by the `DATABASE_PORT` setting, by default `5432`.
 
 ### Create database and user
 
-This step requires a PostgreSQL **maintenance database user** (`MAINTENANCE_DATABASE_USER` setting, by default the name of the current operating system user) with the privileges:
+This step requires a **maintenance database user** (`MAINTENANCE_DATABASE_USER` setting, by default `postgres`) with the privileges:
 
 - [`CREATEDB`](https://www.postgresql.org/docs/current/sql-createrole.html) database privilege
 - `CREATEROLE` database privilege
@@ -60,10 +60,12 @@ Run `make -s createdb createuser` to:
 - Create the **project database** (`DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
 - Create the **project database user** (`DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
 
+  It will prompt for the project database user's password. Enter the same password as the `DATABASE_PASSWORD` setting.
+
 This must be run:
 
 - by any operating system user,
-- from any directory containing the `Makefile` and `config.mk` files,
+- from any directory in which the user can read the `Makefile` and `config.mk` files,
 - to which the operating system user has read and execute permissions.
 
 The simplest option is to run this command as the `postgres` operating system user, which has the necessary privileges.
@@ -87,7 +89,7 @@ Run `make -s tables` to:
 This must be run:
 
 - by any operating system user,
-- from any directory containing the `Makefile` and `config.mk` files,
+- from any directory in which the user can read the `Makefile` and `config.mk` files,
 - to which the operating system user has read and execute permissions.
 
 This command requires you to authenticate as the **project database user**. Either enter the password when prompted, or, to skip the password prompt:
@@ -111,7 +113,7 @@ Run `make build` to:
 This must be run:
 
 - by any operating system user,
-- from any directory containing the `Makefile`,
+- from any directory in which the user can read the `Makefile`,
 - to which the user has read, write and execute permissions.
 
 This command requires you to have write permission to the [Docker daemon's Unix socket](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user), which is owned by the `root` user and `docker` group. Either run the command with `sudo`, or add the operating system user to the `docker` group.
@@ -143,6 +145,18 @@ This must be run:
 
 ## Cron
 
+The [`cron.sh` script](cron.sh) creates a container from the [`kingfisher-collect` image](#docker). This container needs network access to the database server. If the database server is running on the same machine as the cron job, then the simplest option is to:
+
+- Set `listen_addresses = '*'`, either in the [`postgresql.conf`](https://www.postgresql.org/docs/current/config-setting.html) file or in a configuration file under the `conf.d` directory
+- Configure the [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-g-hba-conf.html) file to allow connections from the [IP addresses](https://docs.docker.com/engine/network/#ip-address-and-hostname) allocated by the Docker daemon. For example:
+
+  ```none
+  hostssl all all 0.0.0.0/0 scram-sha-256
+  hostssl all all ::/0      scram-sha-256
+  ```
+
+  This assumes that an external firewall closes the port of the database server to external connections.
+
 Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `CARDINAL_WORKDIR` setting):
 
 ```bash
@@ -158,7 +172,7 @@ make -s print-crontab | crontab
 This must be run:
 
 - by the operating system user that will run the cron job,
-- from any directory containing the `Makefile` and `config.mk` files.
+- from any directory in which the user can read the `Makefile`, `config.mk` and `env.list` files.
 
 ## Clean
 

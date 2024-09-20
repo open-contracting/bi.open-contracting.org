@@ -11,14 +11,21 @@ FORCE:
 
 include config.mk
 
+DATABASE_URL=postgresql://$(DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)
+MAINTENANCE_DATABASE_URL=postgresql://$(MAINTENANCE_DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(MAINTENANCE_DATABASE_NAME)
+
 config.mk:
 	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/config.mk
 
 cron.sh:
 	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cron.sh
 
+env.list:
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/env.list
+
 .PHONY: setup
-setup: config.mk cron.sh
+setup: config.mk cron.sh env.list
+	chmod go-rwx env.list
 
 kingfisher-collect:
 	git clone https://github.com/open-contracting/kingfisher-collect.git
@@ -53,18 +60,20 @@ build: build-python build-cardinal
 
 .PHONY: createdb
 createdb:
-	psql $(MAINTENANCE_DATABASE_NAME) -U $(MAINTENANCE_DATABASE_USER) -h $(DATABASE_HOST) \
+	psql $(MAINTENANCE_DATABASE_URL) \
 		<<<"SELECT 'CREATE DATABASE $(DATABASE_NAME)' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$(DATABASE_NAME)')\gexec"
 
 .PHONY: createuser
 createuser:
-	psql $(MAINTENANCE_DATABASE_NAME) -U $(MAINTENANCE_DATABASE_USER) -h $(DATABASE_HOST) \
-		<<<"SELECT 'CREATE USER $(DATABASE_USER)' WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$(DATABASE_USER)')\gexec"
+	psql $(MAINTENANCE_DATABASE_URL) \
+		-c "SELECT 1/(SELECT COUNT(*) FROM pg_catalog.pg_roles WHERE rolname = '$(DATABASE_USER)')" &>/dev/null \
+		&& echo "role '$(DATABASE_USER)' already exists" \
+		|| createuser $(DATABASE_USER) -P
 
 .PHONY: codelist
 codelist:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/codelist.csv | \
-		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
+		psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS codelist' \
 		-c 'CREATE TABLE codelist (id serial PRIMARY KEY, codelist text, code text, code_es text, UNIQUE (codelist, code))' \
 		-c '\copy codelist (codelist, code, code_es) from stdin csv header'
@@ -72,7 +81,7 @@ codelist:
 .PHONY: cpc
 cpc:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/cpc.csv | \
-		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
+		psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS cpc' \
 		-c 'CREATE TABLE cpc (id serial PRIMARY KEY, code text UNIQUE, description text, description_es text)' \
 		-c '\copy cpc (code, description, description_es) from stdin csv header'
@@ -80,14 +89,14 @@ cpc:
 .PHONY: indicator
 indicator:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/indicator.csv | \
-		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
+		psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS indicator' \
 		-c 'CREATE TABLE indicator (id serial PRIMARY KEY, code text UNIQUE, category text, title text, description text, category_es text, title_es text, description_es text)' \
 		-c '\copy indicator (code, category, title, description, category_es, title_es, description_es) from stdin csv header'
 
 .PHONY: ecuador_sercop_bulk_result
 ecuador_sercop_bulk_result:
-	psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) \
+	psql "$(DATABASE_URL)" \
 		-c 'CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result (id serial PRIMARY KEY, ocid text, subject text, code text, result numeric, buyer_id text, procuring_entity_id text, tenderer_id text, created_at timestamp without time zone)'
 
 .PHONY: tables
@@ -109,7 +118,7 @@ filesystem: data logs scratch ecuador_sercop_bulk.ini
 
 .PHONY: print-crontab
 print-crontab: cron.sh
-	printf "15 0 * * * CARDINAL_DBNAME=$(DATABASE_NAME) CARDINAL_DBUSER=$(DATABASE_USER) CARDINAL_DBHOST=$(DATABASE_HOST) CARDINAL_DBHOST_DOCKER=$(DATABASE_HOST_DOCKER) $(CARDINAL_WORKDIR)/cron.sh\n"
+	printf "15 0 * * * $(CARDINAL_WORKDIR)/cron.sh\n"
 
 .PHONY: clean-build
 clean-build:
