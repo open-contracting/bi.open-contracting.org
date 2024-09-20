@@ -53,14 +53,16 @@ build: build-python build-cardinal
 
 .PHONY: createdb
 createdb:
-	psql postgres <<<"SELECT 'CREATE DATABASE $(DATABASE_NAME)' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$(DATABASE_NAME)')\gexec"
+	psql $(MAINTENANCE_DATABASE_NAME) -U $(MAINTENANCE_DATABASE_USER) -h $(DATABASE_HOST) \
+		<<<"SELECT 'CREATE DATABASE $(DATABASE_NAME)' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$(DATABASE_NAME)')\gexec"
 
 .PHONY: createuser
 createuser:
-	psql postgres <<<"SELECT 'CREATE USER $(DATABASE_USER)' WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$(DATABASE_USER)')\gexec"
+	psql $(MAINTENANCE_DATABASE_NAME) -U $(MAINTENANCE_DATABASE_USER) -h $(DATABASE_HOST) \
+		<<<"SELECT 'CREATE USER $(DATABASE_USER)' WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$(DATABASE_USER)')\gexec"
 
 .PHONY: codelist
-codelist: createdb createuser
+codelist:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/codelist.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS codelist' \
@@ -68,7 +70,7 @@ codelist: createdb createuser
 		-c '\copy codelist (codelist, code, code_es) from stdin csv header'
 
 .PHONY: cpc
-cpc: createdb createuser
+cpc:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/cpc.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS cpc' \
@@ -76,7 +78,7 @@ cpc: createdb createuser
 		-c '\copy cpc (code, description, description_es) from stdin csv header'
 
 .PHONY: indicator
-indicator: createdb createuser
+indicator:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/indicator.csv | \
 		psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) -v ON_ERROR_STOP=1 \
 		-c 'DROP TABLE IF EXISTS indicator' \
@@ -84,12 +86,12 @@ indicator: createdb createuser
 		-c '\copy indicator (code, category, title, description, category_es, title_es, description_es) from stdin csv header'
 
 .PHONY: ecuador_sercop_bulk_result
-ecuador_sercop_bulk_result: createdb createuser
+ecuador_sercop_bulk_result:
 	psql $(DATABASE_NAME) -U $(DATABASE_USER) -h $(DATABASE_HOST) \
 		-c 'CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result (id serial PRIMARY KEY, ocid text, subject text, code text, result numeric, buyer_id text, procuring_entity_id text, tenderer_id text, created_at timestamp without time zone)'
 
-.PHONY: database
-database: codelist cpc indicator ecuador_sercop_bulk_result
+.PHONY: tables
+tables: codelist cpc indicator ecuador_sercop_bulk_result
 
 data:
 	mkdir -p data
