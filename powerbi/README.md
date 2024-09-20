@@ -2,14 +2,14 @@
 
 Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
-The `Makefile` makes this easy to setup. You can configure it by changing the variables in `config.mk`.
+The <Makefile> makes this easy to setup. You can configure it by changing the settings in the <config.mk> file.
 
 All commands assume that the current directory is the "working directory" for the project.
 
-You should create an operating system user with read, write and execute permissions to the working directory (`chmod 700`, at least). For simplicity, you can:
+You must choose an operating system user with read, write and execute permissions to the working directory (`chmod 700`, at least). For simplicity, you p:
 
-- Name the operating system user the same as the database user (`DATABASE_USER` configuration)
-- Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` configuration)
+- Name the operating system user the same as the database user (`DATABASE_USER` setting)
+- Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` setting)
 - Make the working directory readable and executable by others (`chmod 755`)
 
 ## Tips
@@ -45,20 +45,20 @@ Lastly, edit the `config.mk` file, as needed.
 
 ## Database
 
-These commands connect to the PostgreSQL host set by the `DATABASE_HOST` configuration, by default `localhost`.
+These commands connect to the PostgreSQL host set by the `DATABASE_HOST` setting, by default `localhost`.
 
 ### Create database and user
 
-This step requires a PostgreSQL **maintenance database user** (the `MAINTENANCE_DATABASE_USER` configuration, by default the name of the current operating system user) with the [privileges](https://www.postgresql.org/docs/current/sql-createrole.html):
+This step requires a PostgreSQL **maintenance database user** (the `MAINTENANCE_DATABASE_USER` setting, by default the name of the current operating system user) with the privileges:
 
 - [`CREATEDB`](https://www.postgresql.org/docs/current/sql-createrole.html) database privilege
 - `CREATEROLE` database privilege
-- [`CONNECT`](https://www.postgresql.org/docs/current/ddl-priv.html) object privilege to the **maintenance database** (the `MAINTENANCE_DATABASE_NAME` configuration, by default `postgres`)
+- [`CONNECT`](https://www.postgresql.org/docs/current/ddl-priv.html) object privilege to the **maintenance database** (the `MAINTENANCE_DATABASE_NAME` setting, by default `postgres`)
 
 Run `make -s createdb createuser` to:
 
-- Create the **project database** (the `DATABASE_NAME` configuration, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
-- Create the **project database user** (the `DATABASE_USER` configuration, by default `cardinal`), if it doesn't exist
+- Create the **project database** (the `DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
+- Create the **project database user** (the `DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
 
 This must be run:
 
@@ -89,7 +89,7 @@ This must be run:
 - from any directory containing the `Makefile` and `config.mk` files,
 - to which the operating system user has read and execute permissions.
 
-The simplest option is to set the `DATABASE_USER` configuration to the name of the operating system user that will run the [cron job](#cron), since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
+The simplest option is to set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [pg_hba.conf](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
 
 Otherwise, you can, for example, create a [.pgpass](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
 
@@ -135,11 +135,11 @@ Run `make -s filesystem` to:
 This must be run:
 
 - by the operating system user that will run the [cron job](#cron),
-- from the working directory for the project (same as the `CARDINAL_WORKDIR` configuration).
+- from the working directory for the project (same as the `CARDINAL_WORKDIR` setting).
 
 ## Cron
 
-Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `CARDINAL_WORKDIR` configuration):
+Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `CARDINAL_WORKDIR` setting):
 
 ```bash
 make -s print-crontab
