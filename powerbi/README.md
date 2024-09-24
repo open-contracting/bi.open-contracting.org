@@ -4,13 +4,12 @@ Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-coll
 
 The [`Makefile`](Makefile) makes this easy to setup. You can configure it by changing the settings in the [`config.mk`](config.mk) file.
 
-All commands assume that the current directory is the "working directory" for the project.
-
-You must choose an operating system user with read, write and execute permissions to the working directory (`chmod 700`, at least). For simplicity, you can:
+You must choose an operating system user with read, write and execute permissions to the "working directory" for the project (`chmod 700`, at least). For simplicity, you can:
 
 - Name the operating system user the same as the database user (`DATABASE_USER` setting)
 - Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` setting)
 - Make the working directory readable and executable by others (`chmod 755`)
+- Change the current directory to the working directory when running the commands below
 
 ## Tips
 
@@ -172,7 +171,7 @@ make -s print-crontab | crontab
 This must be run:
 
 - by the operating system user that will run the cron job,
-- from any directory in which the user can read the `Makefile`, `config.mk` and `env.list` files.
+- from any directory in which the user can read the `Makefile`, `config.mk` and `env.list` files, and read and execute the `cron.sh` file.
 
 ## Clean
 
