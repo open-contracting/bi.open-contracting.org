@@ -3,14 +3,14 @@
 set -eu
 
 WORKDIR=$(dirname "$0")
+. config.mk
+. env.list
 
 DATABASE_URL="postgresql://$DATABASE_USER:$DATABASE_PASSWORD@$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME"
 if [ "$DATABASE_HOST" = "localhost" ]; then ADD_HOST=host-gateway; else ADD_HOST="$DATABASE_HOST"; fi
 
 docker run -v "$WORKDIR:/workdir" --rm --name kingfisher-collect \
     --add-host=postgres:"$ADD_HOST" \
-    --env-file config.mk \
-    --env-file env.list \
     kingfisher-collect \
     scrapy crawl ecuador_sercop_bulk \
     -a crawl_time=2015-01-01T00:00:00 \
