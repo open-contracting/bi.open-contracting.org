@@ -3,7 +3,9 @@
 set -eu
 
 WORKDIR=$(dirname "$0")
+# shellcheck source=/dev/null
 . config.mk
+# shellcheck source=/dev/null
 . env.list
 
 DATABASE_URL="postgresql://$DATABASE_USER:$DATABASE_PASSWORD@$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME"
