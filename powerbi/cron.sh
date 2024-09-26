@@ -4,9 +4,9 @@ set -eu
 
 WORKDIR=$(dirname "$0")
 # shellcheck source=/dev/null
-. config.mk
+. env.public
 # shellcheck source=/dev/null
-. env.list
+. env.private
 
 DATABASE_URL="postgresql://$DATABASE_USER:$DATABASE_PASSWORD@$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME"
 if [ "$DATABASE_HOST" = "localhost" ]; then ADD_HOST=host-gateway; else ADD_HOST="$DATABASE_HOST"; fi

@@ -9,23 +9,23 @@ SHELL := bash
 # See https://clarkgrubb.com/makefile-style-guide#phony-target-arg
 FORCE:
 
-include config.mk
+include env.public
 
 DATABASE_URL=postgresql://$(DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)
 MAINTENANCE_DATABASE_URL=postgresql://$(MAINTENANCE_DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(MAINTENANCE_DATABASE_NAME)
 
-config.mk:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/config.mk
+env.public:
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/env.public
 
 cron.sh:
 	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cron.sh
 
-env.list:
-	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/env.list
+env.private:
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/env.private
 
 .PHONY: setup
-setup: config.mk cron.sh env.list
-	chmod go-rwx env.list
+setup: env.public cron.sh env.private
+	chmod go-rwx env.private
 
 kingfisher-collect:
 	git clone https://github.com/open-contracting/kingfisher-collect.git

@@ -2,7 +2,7 @@
 
 Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
-The [`Makefile`](Makefile) makes this easy to setup. You can configure it by changing the settings in the [`config.mk`](config.mk) file.
+The [`Makefile`](Makefile) makes this easy to setup. You can configure it by changing the settings in the [`env.public`](env.public) file.
 
 You must choose an operating system user with read, write and execute permissions to the "working directory" for the project (`chmod 700`, at least). For simplicity, you can:
 
@@ -34,13 +34,13 @@ Download the [`Makefile`](Makefile) to the current directory:
 curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Makefile
 ```
 
-Download the [`config.mk`](config.mk), [`cron.sh`](cron.sh) and [`env.list`](env.list) files to the current directory, if they don't exist, and restrict permissions to the `env.list` file (`chmod go-rwx`):
+Download the [`env.public`](env.public), [`cron.sh`](cron.sh) and [`env.private`](env.private) files to the current directory, if they don't exist, and restrict permissions to the `env.private` file (`chmod go-rwx`):
 
 ```bash
 make setup
 ```
 
-Lastly, edit the `config.mk` and `env.list` files. At minimum, set the `DATABASE_PASSWORD` setting in the `env.list` file to a [strong password](https://www.lastpass.com/features/password-generator).
+Lastly, edit the `env.public` and `env.private` files. At minimum, set the `DATABASE_PASSWORD` setting in the `env.private` file to a [strong password](https://www.lastpass.com/features/password-generator).
 
 ## Database (PostgreSQL)
 
@@ -64,7 +64,7 @@ Run `make -s createdb createuser` to:
 This must be run:
 
 - by any operating system user,
-- from any directory in which the user can read the `Makefile` and `config.mk` files,
+- from any directory in which the user can read the `Makefile` and `env.public` files,
 - to which the operating system user has read and execute permissions.
 
 The simplest option is to run this command as the `postgres` operating system user, which has the necessary privileges.
@@ -88,7 +88,7 @@ Run `make -s tables` to:
 This must be run:
 
 - by any operating system user,
-- from any directory in which the user can read the `Makefile` and `config.mk` files,
+- from any directory in which the user can read the `Makefile` and `env.public` files,
 - to which the operating system user has read and execute permissions.
 
 This command requires you to authenticate as the **project database user**. Either enter the password when prompted, or, to skip the password prompt:
@@ -171,7 +171,7 @@ make -s print-crontab | crontab
 This must be run:
 
 - by the operating system user that will run the cron job,
-- from any directory in which the user can read the `Makefile`, `config.mk` and `env.list` files, and read and execute the `cron.sh` file.
+- from any directory in which the user can read the `Makefile`, `env.public` and `env.private` files, and read and execute the `cron.sh` file.
 
 ## Clean
 
