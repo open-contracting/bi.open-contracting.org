@@ -173,6 +173,8 @@ This must be run:
 - by the operating system user that will run the cron job,
 - from any directory in which the user can read the `Makefile`, `env.public` and `env.private` files, and read and execute the `cron.sh` file.
 
+We recommend also setting the `MAILTO` environment variable in the user's crontab, to be notified of any errors.
+
 ## Clean
 
 If desired, you can delete the `kingfisher-collect` and `cardinal-rs` directories, which are downloaded by the `build` target, but aren't needed after building images:
