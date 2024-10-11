@@ -40,7 +40,12 @@ Download the [`env.public`](env.public), [`cron.sh`](cron.sh) and [`env.private`
 make setup
 ```
 
-Lastly, edit the `env.public` and `env.private` files. At minimum, set the `DATABASE_PASSWORD` setting in the `env.private` file to a [strong password](https://www.lastpass.com/features/password-generator).
+Lastly, edit the `env.public` and `env.private` files. At minimum:
+
+- In the `env.public` file:
+  - Set the `KINGFISHER_COLLECT_SPIDER` setting, like `dominican_republic_api` or `sercop_ecuador_bulk`
+  - If appropriate, set the `KINGFISHER_COLLECT_SPIDER_ARGUMENTS` setting, like `-a compile_releases=true -a force_version=1.1 -a ignore_version=true` for the Dominican Republic
+- In the `env.private` file, set the `DATABASE_PASSWORD` setting to a [strong password](https://www.lastpass.com/features/password-generator)
 
 ## Database (PostgreSQL)
 
