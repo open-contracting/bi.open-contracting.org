@@ -94,13 +94,8 @@ indicator:
 		-c 'CREATE TABLE indicator (id serial PRIMARY KEY, code text UNIQUE, category text, title text, description text, category_es text, title_es text, description_es text)' \
 		-c '\copy indicator (code, category, title, description, category_es, title_es, description_es) from stdin csv header'
 
-.PHONY: ecuador_sercop_bulk_result
-ecuador_sercop_bulk_result:
-	psql "$(DATABASE_URL)" \
-		-c 'CREATE TABLE IF NOT EXISTS ecuador_sercop_bulk_result (id serial PRIMARY KEY, ocid text, subject text, code text, result numeric, buyer_id text, procuring_entity_id text, tenderer_id text, created_at timestamp without time zone)'
-
 .PHONY: tables
-tables: codelist cpc indicator ecuador_sercop_bulk_result
+tables: codelist cpc indicator
 
 data:
 	mkdir -p data
@@ -111,10 +106,10 @@ logs:
 scratch:
 	mkdir -p scratch
 
-ecuador_sercop_bulk.ini:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/cardinal/ecuador_sercop_bulk.ini
+cardinal.ini:
+	curl -sSL -o cardinal.ini https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/cardinal/$(KINGFISHER_COLLECT_SPIDER).ini
 
-filesystem: data logs scratch ecuador_sercop_bulk.ini
+filesystem: data logs scratch cardinal.ini
 
 .PHONY: print-crontab
 print-crontab: cron.sh
@@ -127,7 +122,7 @@ clean-build:
 
 .PHONY: force-clean
 force-clean: clean-build
-	rm -f ecuador_sercop_bulk.ini
+	rm -f cardinal.ini
 	rm -rf data
 	rm -rf logs
 	rm -rf scratch

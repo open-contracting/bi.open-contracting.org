@@ -1,4 +1,4 @@
-# Power BI (Ecuador SERCOP)
+# Power BI
 
 Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
 
@@ -82,7 +82,6 @@ This command requires you to authenticate as the **maintenance database user**. 
 
 Run `make -s tables` to:
 
-- Create the `ecuador_sercop_bulk_result` table, owned by the **project database user**, if it doesn't exist
 - Create (or re-create) the `codelist`, `indicator` and `cpc` tables, owned by the **project database user**
 
 This must be run:
@@ -135,7 +134,7 @@ docker run --rm --name cardinal-rs cardinal-rs --help
 Run `make -s filesystem` to:
 
 - Create `data`, `logs` and `scratch` directories, owned by the current operating system user, if they don't exist
-- Download [Cardinal's settings file](https://github.com/open-contracting/deploy/blob/main/salt/kingfisher/collect/files/cardinal/ecuador_sercop_bulk.ini) to `ecuador_sercop_bulk.ini`, owned by the current operating system user
+- Download [Cardinal's settings file](https://github.com/open-contracting/deploy/tree/main/salt/kingfisher/collect/files/cardinal/) to `cardinal.ini`, owned by the current operating system user
 
 This must be run:
 
@@ -183,7 +182,7 @@ If desired, you can delete the `kingfisher-collect` and `cardinal-rs` directorie
 make clean-build
 ```
 
-If you need to start over, delete the cron job manually. Then, delete the `ecuador_sercop_bulk.ini` file and the `data`, `logs` and `scratch` directories:
+If you need to start over, delete the cron job manually. Then, delete the `cardinal.ini` file and the `data`, `logs` and `scratch` directories:
 
 ```bash
 make force-clean
@@ -194,13 +193,13 @@ make force-clean
 Kingfisher Collect writes:
 
 - data files to the `data/` directory (>20GB). This directory must not be deleted; otherwise, contracting processes are lost, because Kingfisher Collect downloads only new files.
-- data to the `ecuador_sercop_bulk` table (~10GB). This table must not be dropped; otherwise, Kingfisher Collect re-downloads all old files, instead of only new files.
+- data to a table whose name matches the Kingfisher Collect spider (for example, `ecuador_sercop_bulk`, ~10GB). This table must not be dropped; otherwise, Kingfisher Collect re-downloads all old files, instead of only new files.
 - log files to the `logs/` directory (<10MB each). To control disk usage, set up log rotation on this directory.
 
 The [cron job](#cron) writes:
 
-- contracting processes to the `ecuador_sercop_bulk_clean` table (~10GB). This table is read by Power BI.
-- indicator results to the `ecuador_sercop_bulk_result` table (~50MB). This table is read by Power BI.
+- contracting processes to a table whose name suffixes `_clean` to the Kingfisher Collect spider (`ecuador_sercop_bulk_clean`, ~10GB). This table is read by Power BI.
+- indicator results to a table whose name suffixes `_result` to the Kingfisher Collect spider (`ecuador_sercop_bulk_result`, ~50MB). This table is read by Power BI.
 - temporary files (~15GB), that are deleted by the end of the script.
 
 As such, the project requires about 50GB for both permanent and temporary data.

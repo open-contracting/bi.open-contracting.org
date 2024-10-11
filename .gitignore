@@ -1,6 +1,6 @@
 /powerbi/kingfisher-collect
 /powerbi/cardinal-rs
-/powerbi/ecuador_sercop_bulk.ini
+/powerbi/*.ini
 /powerbi/data
 /powerbi/logs
 /powerbi/scratch
