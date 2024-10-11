@@ -82,7 +82,19 @@ This command requires you to authenticate as the **maintenance database user**. 
 
 Run `make -s tables` to:
 
-- Create (or re-create) the `codelist`, `indicator` and `cpc` tables, owned by the **project database user**
+- Create (or re-create) the `codelist`, `indicator`, `cpc`, `unspsc` and `excluded_supplier` tables, owned by the **project database user**
+
+If you don't need the `excluded_supplier` table or only need one of the `cpc` or `unspsc` tables, you can modify the `tables` target in the `Makefile`, or run the individual targets you need, like:
+
+```none
+make -s codelist
+make -s indicator
+# One of:
+make -s cpc
+make -s unspsc
+# If applicable:
+make -s excluded_supplier
+```
 
 This must be run:
 
@@ -186,6 +198,27 @@ If you need to start over, delete the cron job manually. Then, delete the `cardi
 
 ```bash
 make force-clean
+```
+
+### Excluded suppliers
+
+If you use the `excluded_supplier` table, you need to schedule a cron job to update the table. For example, for the Dominican Republic, this script can run daily:
+
+```bash
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# https://datosabiertos.dgcp.gob.do/opendata/tablas
+curl -sSk https://api.dgcp.gob.do/opendata/proveedores/proveedores_inhabilitados.csv |
+    # The first column is the RPE.
+    grep -Eo '^[0-9]+,' |
+    # Sort numerically and uniquely.
+    sort -nu |
+    # Prefix the identifier scheme.
+    sed -E 's/^(.+),$/DO-RPE-\1/' |
+    # Replace the table in a transaction.
+    psql -U kingfisher_collect -h localhost -q -c "BEGIN; DELETE FROM excluded_supplier; COPY excluded_supplier (identifier) FROM stdin; END;"
 ```
 
 ## Disk usage

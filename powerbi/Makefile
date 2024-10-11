@@ -86,6 +86,13 @@ cpc:
 		-c 'CREATE TABLE cpc (id serial PRIMARY KEY, code text UNIQUE, description text, description_es text)' \
 		-c '\copy cpc (code, description, description_es) from stdin csv header'
 
+.PHONY: excluded_supplier
+excluded_supplier:
+	psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 \
+		-c 'DROP TABLE IF EXISTS excluded_supplier' \
+		-c "CREATE TABLE excluded_supplier (id serial PRIMARY KEY, identifier text UNIQUE)"
+
+
 .PHONY: indicator
 indicator:
 	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/indicator.csv | \
@@ -94,8 +101,16 @@ indicator:
 		-c 'CREATE TABLE indicator (id serial PRIMARY KEY, code text UNIQUE, category text, title text, description text, category_es text, title_es text, description_es text)' \
 		-c '\copy indicator (code, category, title, description, category_es, title_es, description_es) from stdin csv header'
 
+.PHONY: unspsc
+unspsc:
+	curl -sSL https://raw.githubusercontent.com/open-contracting/deploy/main/salt/kingfisher/collect/files/data/unspsc.csv | \
+		psql "$(DATABASE_URL)" -v ON_ERROR_STOP=1 \
+		-c 'DROP TABLE IF EXISTS unspsc' \
+		-c 'CREATE TABLE unspsc (id serial PRIMARY KEY, code integer UNIQUE, description text, description_es text)' \
+		-c '\copy unspsc (code, description, description_es) from stdin csv header'
+
 .PHONY: tables
-tables: codelist cpc indicator
+tables: codelist cpc excluded_supplier indicator unspsc
 
 data:
 	mkdir -p data
