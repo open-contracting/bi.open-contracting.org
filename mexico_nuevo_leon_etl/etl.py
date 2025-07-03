@@ -3,7 +3,7 @@ import os
 import psycopg2.sql
 from pymongo import MongoClient
 
-COLLECTIONS_TO_LOAD = ['contests', 'db_sheet_plan_anual', 'provider_contests', 'provider_data', 'sheet_contests',
+COLLECTIONS_TO_LOAD = ['db_sheet_plan_anual', 'provider_contests', 'provider_data', 'sheet_contests',
                        'sheet_dependencias']
 
 TARGET_TABLE_NAME_PREFIX = 'mexico_nuevo_leon'
