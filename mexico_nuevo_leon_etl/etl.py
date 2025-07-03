@@ -20,10 +20,12 @@ class DataLoader:
         self.source_database_name = source_database_name
 
         self.source_database = None
+        self.source_database_client = None
         self.target_database_connection = None
 
     def connect(self):
-        self.source_database = MongoClient(self.source_database_url)[self.source_database_name]
+        self.source_database_client = MongoClient(self.source_database_url)
+        self.source_database = self.source_database_client[self.source_database_name]
         self.target_database_connection = psycopg2.connect(self.target_database_url)
 
     def save_to_target(self, collection):
@@ -43,7 +45,7 @@ class DataLoader:
                     [(Json(item),) for item in self.source_database[collection].find({}, {"_id": False})],
                 )
         finally:
-            self.source_database.close()
+            self.source_database_client.close()
             self.target_database_connection.close()
 
 
@@ -57,8 +59,7 @@ def main():
     )
     for collection in (
         "db_sheet_plan_anual",
-        "provider_contests",
-        "provider_data",
+        "db_provider_data",
         "sheet_contests",
         "sheet_dependencias",
     ):
