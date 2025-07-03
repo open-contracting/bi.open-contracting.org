@@ -1,0 +1,21 @@
+ci:
+  autoupdate_schedule: quarterly
+  skip: [pip-compile]
+default_language_version:
+    python: python3.11
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.0
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.6.12
+    hooks:
+      - id: pip-compile
+        name: pip-compile requirements.in
+        args: [requirements.in, -o, requirements.txt]
+      - id: pip-compile
+        name: pip-compile requirements_dev.in
+        args: [requirements_dev.in, -o, requirements_dev.txt]
+        files: ^requirements(_dev)?\.(in|txt)$
