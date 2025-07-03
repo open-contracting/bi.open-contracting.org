@@ -1,14 +1,14 @@
 import json
 import os
 
-import psycopg2.extras
-import psycopg2.sql
+import psycopg2
+from psycopg2 import extras, sql
 from pymongo import MongoClient
 
 TARGET_TABLE_NAME_PREFIX = "mexico_nuevo_leon"
 
 
-class Json(psycopg2.extras.Json):
+class Json(extras.Json):
     def dumps(self, obj):
         return json.dumps(obj, default=str)
 
@@ -26,21 +26,21 @@ class DataLoader:
         self.source_database = MongoClient(self.source_database_url)[self.source_database_name]
         self.target_database_connection = psycopg2.connect(self.target_database_url)
 
-    def save_to_target(self, collection_name):
-        table_name = f"{TARGET_TABLE_NAME_PREFIX}_{collection_name}"
+    def save_to_target(self, collection):
+        table = f"{TARGET_TABLE_NAME_PREFIX}_{collection}"
 
         try:
             self.connect()
             with self.target_database_connection, self.target_database_connection.cursor() as cursor:
-                cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-                cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (data jsonb)")
-                psycopg2.extras.execute_values(
+                cursor.execute(sql.SQL("DROP TABLE IF EXISTS {table}").format(table=sql.Identifier(table)))
+                cursor.execute(
+                    sql.SQL("CREATE TABLE IF NOT EXISTS {table} (data jsonb)").format(table=sql.Identifier(table))
+                )
+                statement = sql.SQL("INSERT INTO {table} (data) VALUES %s").format(table=sql.Identifier(table))
+                extras.execute_values(
                     cursor,
-                    f"INSERT INTO {table_name} (data) VALUES %s",
-                    [
-                        (Json(item),)
-                        for item in self.source_database[collection_name].find({}, {"_id": False})
-                    ],
+                    statement.as_string(cursor),
+                    [(Json(item),) for item in self.source_database[collection].find({}, {"_id": False})],
                 )
         finally:
             self.source_database.close()
