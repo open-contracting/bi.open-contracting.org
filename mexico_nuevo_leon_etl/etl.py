@@ -2,6 +2,7 @@ import json
 import os
 
 import psycopg2.sql
+from psycopg2.extras import execute_values
 from pymongo import MongoClient
 
 TARGET_TABLE_NAME_PREFIX = "mexico_nuevo_leon"
@@ -28,8 +29,14 @@ class DataLoader:
             with self.target_database_connection, self.target_database_connection.cursor() as cursor:
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (data jsonb)")
-                for item in self.source_database[collection_name].find({}, {"_id": False}):
-                    self.cursor.execute(f"insert into {table_name} (data) values (%s)", (json.dumps(item, default=str),))
+                execute_values(
+                    cursor,
+                    f"INSERT INTO {table_name} (data) VALUES %s",
+                    [
+                        (json.dumps(item, default=str),)
+                        for item in self.source_database[collection_name].find({}, {"_id": False})
+                    ],
+                )
         finally:
             self.target_database_connection.close()
 
