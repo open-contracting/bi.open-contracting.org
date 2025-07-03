@@ -10,6 +10,7 @@ TARGET_TABLE_NAME_PREFIX = "mexico_nuevo_leon"
 
 class Json(extras.Json):
     def dumps(self, obj):
+        # The original datasets contains dates
         return json.dumps(obj, default=str)
 
 
