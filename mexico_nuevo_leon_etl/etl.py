@@ -22,14 +22,14 @@ class DataLoader:
         self.target_database_connection = psycopg2.connect(self.target_database_url)
         self.cursor = self.target_database_connection.cursor()
 
-    def save_to_target(self, table_name):
-        table_name = f"{TARGET_TABLE_NAME_PREFIX}_{table_name}"
+    def save_to_target(self, collection_name):
+        table_name = f"{TARGET_TABLE_NAME_PREFIX}_{collection_name}"
 
         try:
             self.connect()
             self.cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
             self.cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (data jsonb)")
-            for item in self.source_database[table_name].find({}, {"_id": False}):
+            for item in self.source_database[collection_name].find({}, {"_id": False}):
                 self.cursor.execute(f"insert into {table_name} (data) values (%s)", (json.dumps(item, default=str),))
             self.target_database_connection.commit()
         finally:
