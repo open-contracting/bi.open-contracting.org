@@ -43,6 +43,7 @@ class DataLoader:
                     ],
                 )
         finally:
+            self.source_database.close()
             self.target_database_connection.close()
 
 
