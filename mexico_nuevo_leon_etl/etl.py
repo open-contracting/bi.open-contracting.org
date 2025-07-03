@@ -56,7 +56,6 @@ def main():
         ),
     )
     for collection in (
-        "contests",
         "db_sheet_plan_anual",
         "provider_contests",
         "provider_data",
