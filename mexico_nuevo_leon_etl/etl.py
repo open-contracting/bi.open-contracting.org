@@ -82,7 +82,9 @@ def main():
 
             for resource in response.json()["result"]["resources"]:
                 filename = f"{resource['name']}.json"
-                if filename.upper().startswith("JSON-OCDS") and filename not in existing:  # Note: Delete old files if the publisher changes any
+                if (
+                    filename.upper().startswith("JSON-OCDS") and filename not in existing
+                ):  # Note: Delete old files if the publisher changes any
                     response = requests.get(resource["url"], verify=False, timeout=180)  # noqa: S501
                     response.raise_for_status()
                     (files_store_path / filename).write_bytes(response.content)
