@@ -36,6 +36,11 @@ class DataLoader:
         self.source_database = self.source_database_client[self.source_database_name]
         self.target_database_connection = psycopg2.connect(self.target_database_url)
 
+    def disconnect(self):
+        self.source_database = None
+        self.source_database_client.close()
+        self.target_database_connection.close()
+
     def get_list_of_existing_ocds_files(self):
         return [file for file in Path.iterdir(self.files_store_path) if file.name.endswith(".json")]
 
@@ -63,9 +68,19 @@ class DataLoader:
                     with Path.open(Path(root) / name, "rb") as f:
                         yield from ijson.items(f, "releases.item")
 
+    def get_compiled_internal_ocds_data(self):
+        try:
+            self.connect()
+            items = [
+                json.loads(Json(item).dumps(item))
+                for item in self.source_database["db_release_ocds_detalle"].find({}, {"_id": False})
+            ]
+            return merge(items)
+        finally:
+            self.disconnect()
+
     def save_to_target(self, collection, data=None):
         table = f"{TARGET_TABLE_NAME_PREFIX}_{collection}"
-
         try:
             self.connect()
             data_to_save = data if data else self.source_database[collection].find({}, {"_id": False})
@@ -81,9 +96,7 @@ class DataLoader:
                     [(Json(item),) for item in data_to_save],
                 )
         finally:
-            self.source_database = None
-            self.source_database_client.close()
-            self.target_database_connection.close()
+            self.disconnect()
 
 
 def main():
@@ -103,7 +116,8 @@ def main():
     ):
         dataloader.save_to_target(collection)
 
-    dataloader.save_to_target("ocds_public", dataloader.get_compiled_public_ocds_data())
+    dataloader.save_to_target("ocds_internal", dataloader.get_compiled_internal_ocds_data())
+    dataloader.save_to_target("ocds_external", dataloader.get_compiled_public_ocds_data())
 
 
 if __name__ == "__main__":
