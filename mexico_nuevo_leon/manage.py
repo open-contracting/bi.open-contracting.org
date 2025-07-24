@@ -84,7 +84,6 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
 
     try:
         source_database = source_database_connection[source_db_name]
-        files_store_path = Path(files_store_path)
 
         for collection in (
             "db_sheet_plan_anual",
@@ -112,6 +111,7 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
             )
             response.raise_for_status()
 
+            files_store_path = Path(files_store_path)
             files_store_path.mkdir(parents=True, exist_ok=True)
             existing = {file.name for file in files_store_path.iterdir()}
 
