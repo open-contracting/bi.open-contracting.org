@@ -4,6 +4,7 @@ import os
 from functools import partial
 from pathlib import Path
 
+import click
 import ijson
 import psycopg2
 import requests
@@ -38,19 +39,44 @@ def update_target_database(connection, collection, data):
         extras.execute_values(cursor, statement.as_string(cursor), [(Json(item),) for item in data])
 
 
-def main():
-    source_database_connection = MongoClient(
-        os.getenv("NUEVO_LEON_SOURCE_DB_URL", "mongodb://root:example@localhost:27017")
-    )
-    target_database_connection = psycopg2.connect(
-        os.getenv("NUEVO_LEON_TARGET_DB_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
-    )
+@click.command()
+@click.option(
+    "--source-db-url",
+    envvar="NUEVO_LEON_SOURCE_DB_URL",
+    default="mongodb://root:example@localhost:27017",
+    show_default=True,
+    help="MongoDB source database URL",
+)
+@click.option(
+    "--source-db-name",
+    envvar="NUEVO_LEON_SOURCE_DB_NAME",
+    default="nuevo_leon",
+    show_default=True,
+    help="MongoDB source database name",
+)
+@click.option(
+    "--target-db-url",
+    envvar="NUEVO_LEON_TARGET_DB_URL",
+    default="postgresql://postgres:postgres@localhost:5432/postgres",
+    show_default=True,
+    help="PostgreSQL target database URL",
+)
+@click.option(
+    "--files-store-path",
+    envvar="NUEVO_LEON_FILES_STORE_PATH",
+    default="data",
+    show_default=True,
+    help="Path to store OCDS files",
+)
+def main(source_db_url, source_db_name, target_db_url, files_store_path):
+    source_database_connection = MongoClient(source_db_url)
+    target_database_connection = psycopg2.connect(target_db_url)
 
     update = partial(update_target_database, target_database_connection)
 
     try:
-        source_database = source_database_connection[os.getenv("NUEVO_LEON_SOURCE_DB_NAME", "nuevo_leon")]
-        files_store_path = Path(os.getenv("NUEVO_LEON_FILES_STORE_PATH", "data"))
+        source_database = source_database_connection[source_db_name]
+        files_store_path = Path(files_store_path)
 
         for collection in (
             "db_sheet_plan_anual",
