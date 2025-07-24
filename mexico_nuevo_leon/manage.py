@@ -51,25 +51,25 @@ def update_target_database(connection, collection, data):
 @click.argument("collections", nargs=-1, required=False, type=click.Choice(COLLECTIONS))
 @click.option(
     "--source-db-url",
-    envvar="NUEVO_LEON_SOURCE_DB_URL",
-    default="mongodb://root:example@localhost:27017",
+    envvar="BI_SOURCE_DB_URL",
+    default="localhost",
     help="MongoDB source database URL",
 )
 @click.option(
     "--source-db-name",
-    envvar="NUEVO_LEON_SOURCE_DB_NAME",
+    envvar="BI_SOURCE_DB_NAME",
     default="nuevo_leon",
     help="MongoDB source database name",
 )
 @click.option(
     "--target-db-url",
-    envvar="NUEVO_LEON_TARGET_DB_URL",
-    default="postgresql://postgres:postgres@localhost:5432/postgres",
+    envvar="BI_TARGET_DB_URL",
+    default="postgresql:///kingfisher_collect?application_name=bi.open-contracting.org",
     help="PostgreSQL target database URL",
 )
 @click.option(
     "--files-store-path",
-    envvar="NUEVO_LEON_FILES_STORE_PATH",
+    envvar="BI_FILES_STORE_PATH",
     default="data",
     help="Path to store OCDS files",
 )
