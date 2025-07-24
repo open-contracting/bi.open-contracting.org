@@ -1,2 +1,6 @@
+click
+ijson
+ocdskit
 psycopg2
 pymongo
+requests
