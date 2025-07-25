@@ -14,5 +14,8 @@ ignore = [
     "INP001",
 ]
 
+[tool.ruff.lint.flake8-builtins]
+builtins-ignorelist = ["copyright"]
+
 [tool.ruff.lint.flake8-unused-arguments]
 ignore-variadic-names = true
