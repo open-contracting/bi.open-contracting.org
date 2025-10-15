@@ -73,7 +73,11 @@ def update_target_database(connection, collection, data):
     default="data",
     help="Path to store OCDS files",
 )
-def main(collections, source_db_url, source_db_name, target_db_url, files_store_path):
+@click.option(
+    "--ocds-external-file-path",
+    help="Path consume the public OCDS JSON file, instead of using CKAN",
+)
+def main(collections, source_db_url, source_db_name, target_db_url, files_store_path, ocds_external_file_path):
     if not collections:
         collections = COLLECTIONS
 
@@ -104,24 +108,28 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
             )
 
         if "ocds_external" in collections:
-            response = requests.get(
-                "https://catalogodatos.nl.gob.mx/api/3/action/package_show?id=contrataciones-abiertas-direccion-general-de-adquisiciones-y-servicios",
-                verify=False,  # noqa: S501
-                timeout=10,
-            )
-            response.raise_for_status()
+            if ocds_external_file_path:
+                files_store_path = Path(ocds_external_file_path)
+            else:
+                response = requests.get(
+                    "https://catalogodatos.nl.gob.mx/api/3/action/package_show?id=contrataciones-abiertas-direccion"
+                    "-general-de-adquisiciones-y-servicios",
+                    verify=False,  # noqa: S501
+                    timeout=10,
+                )
+                response.raise_for_status()
 
-            files_store_path = Path(files_store_path)
-            files_store_path.mkdir(parents=True, exist_ok=True)
-            existing = {file.name for file in files_store_path.iterdir()}
+                files_store_path = Path(files_store_path)
+                files_store_path.mkdir(parents=True, exist_ok=True)
+                existing = {file.name for file in files_store_path.iterdir()}
 
-            for resource in response.json()["result"]["resources"]:
-                filename = f"{resource['name']}.json"
-                # Note: We would need to delete old files if the publisher changes any.
-                if filename.upper().startswith("JSON-OCDS") and filename not in existing:
-                    response = requests.get(resource["url"], verify=False, timeout=180)  # noqa: S501
-                    response.raise_for_status()
-                    (files_store_path / filename).write_bytes(response.content)
+                for resource in response.json()["result"]["resources"]:
+                    filename = f"{resource['name']}.json"
+                    # Note: We would need to delete old files if the publisher changes any.
+                    if filename.upper().startswith("JSON-OCDS") and filename not in existing:
+                        response = requests.get(resource["url"], verify=False, timeout=180)  # noqa: S501
+                        response.raise_for_status()
+                        (files_store_path / filename).write_bytes(response.content)
 
             update("ocds_external", merge(yield_items_from_directory(files_store_path)))
     finally:
