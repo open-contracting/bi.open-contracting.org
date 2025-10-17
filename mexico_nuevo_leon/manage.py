@@ -19,7 +19,7 @@ COLLECTIONS = [
     "sheet_contests",
     "sheet_dependencias",
     "ocds_internal",
-    "ocds_external",
+    "ocds_publico",
 ]
 
 
@@ -107,10 +107,10 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
                 ),
             )
 
-        if "ocds_external" in collections:
+        if "ocds_publico" in collections:
             if ocds_external_collection_name:
                 update(
-                    "ocds_external",
+                    "ocds_publico",
                     merge(
                         json.loads(json.dumps(item, default=str))  # pymongo decodes to native datetimes
                         for item in source_database[ocds_external_collection_name].find({}, {"_id": False})
@@ -137,7 +137,7 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
                         response.raise_for_status()
                         (files_store_path / filename).write_bytes(response.content)
 
-                update("ocds_external", merge(yield_items_from_directory(files_store_path)))
+                update("ocds_publico", merge(yield_items_from_directory(files_store_path)))
     finally:
         source_database_connection.close()
         target_database_connection.close()
