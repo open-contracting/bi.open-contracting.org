@@ -1,13 +1,13 @@
 # Power BI
 
-Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) and [Cardinal](https://cardinal.readthedocs.io/en/latest/) using Docker.
+Follow these instructions to deploy [Kingfisher Collect](https://kingfisher-collect.readthedocs.io/en/latest/) using Docker.
 
 The [`Makefile`](Makefile) makes this easy to setup. You can configure it by changing the settings in the [`env.public`](env.public) file.
 
 You must choose an operating system user with read, write and execute permissions to the "working directory" for the project (`chmod 700`, at least). For simplicity, you can:
 
 - Name the operating system user the same as the database user (`DATABASE_USER` setting)
-- Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` setting)
+- Create a home directory for the operating system user, to use as the working directory (`OCDS_POWERBI_WORKDIR` setting)
 - Make the working directory readable and executable by others (`chmod 755`)
 - Change the current directory to the working directory when running the commands below
 
@@ -43,7 +43,7 @@ make setup
 Lastly, edit the `env.public` and `env.private` files. At minimum:
 
 - In the `env.public` file:
-  - Set the `KINGFISHER_COLLECT_SPIDER` setting, like `dominican_republic_api` or `sercop_ecuador_bulk`
+  - Set the `KINGFISHER_COLLECT_SPIDER` setting, like `rwanda_api`
   - If appropriate, set the `KINGFISHER_COLLECT_SPIDER_ARGUMENTS` setting, like `-a compile_releases=true -a force_version=1.1 -a ignore_version=true` for the Dominican Republic
 - In the `env.private` file, set the `DATABASE_PASSWORD` setting to a [strong password](https://www.lastpass.com/features/password-generator)
 
@@ -61,8 +61,8 @@ This step requires a **maintenance database user** (`MAINTENANCE_DATABASE_USER` 
 
 Run `make -s createdb createuser` to:
 
-- Create the **project database** (`DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
-- Create the **project database user** (`DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
+- Create the **project database** (`DATABASE_NAME` setting, by default `ocds_powerbi`), owned by the **maintenance database user**, if it doesn't exist
+- Create the **project database user** (`DATABASE_USER` setting, by default `ocds_powerbi`), if it doesn't exist
 
   It will prompt for the project database user's password. Enter the same password as the `DATABASE_PASSWORD` setting.
 
@@ -83,34 +83,7 @@ This command requires you to authenticate as the **maintenance database user**. 
   localhost:5432:maintenance-database-name:maintenance-database-user:strong-password
   ```
 
-### Create tables
 
-Run `make -s tables` to:
-
-- Create (or re-create) the `codelist`, `indicator`, `cpc`, `unspsc` and `excluded_supplier` tables, owned by the **project database user**
-
-If you don't need the `excluded_supplier` table or only need one of the `cpc` or `unspsc` tables, you can modify the `tables` target in the `Makefile`, or run the individual targets you need, like:
-
-```none
-make -s codelist
-make -s indicator
-# One of:
-make -s cpc
-make -s unspsc
-# If applicable:
-make -s excluded_supplier
-```
-
-This must be run:
-
-- by any operating system user,
-- from any directory in which the user can read the `Makefile` and `env.public` files,
-- to which the operating system user has read and execute permissions.
-
-This command requires you to authenticate as the **project database user**. Either enter the password when prompted, or, to skip the password prompt:
-
-- Set the `DATABASE_USER` setting to the name of the operating system user that will run the [cron job](#cron), since the default [`pg_hba.conf`](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html) file allows local `peer` connections as any database user to all databases.
-- Create a [`.pgpass`](https://www.postgresql.org/docs/current/libpq-pgpass.html) file in the operating system user's home directory, and set its permissions to owner-readable only (`400`). For example:
 
   ```none
   localhost:5432:project-database-name:project-database-user:strong-password
@@ -120,10 +93,10 @@ This command requires you to authenticate as the **project database user**. Eith
 
 Run `make build` to:
 
-- Clone the [`kingfisher-collect`](https://github.com/open-contracting/kingfisher-collect) and [`cardinal-rs`](https://github.com/open-contracting/cardinal-rs) repositories into the current directory, if they don't exist
-- Download the [`Dockerfile_cardinal`](Dockerfile_cardinal) and [`Dockerfile_python`](Dockerfile_python) files to the current directory, if they don't exist
-- Pull changes for the `kingfisher-collect` and `cardinal-rs` repositories
-- Build the `kingfisher-collect` and `cardinal-rs` images
+- Clone the [`kingfisher-collect`](https://github.com/open-contracting/kingfisher-collect) repository into the current directory, if it doesn't exist
+- Download the [`Dockerfile_python`](Dockerfile_python) file to the current directory, if it doesn't exist
+- Pull changes for the `kingfisher-collect` repository
+- Build the `kingfisher-collect` image
 
 This must be run:
 
@@ -140,23 +113,17 @@ docker run --rm --name kingfisher-collect kingfisher-collect scrapy --help
 docker run --rm --name kingfisher-collect kingfisher-collect python manage.py --help
 ```
 
-The `cardinal-rs` image is for running `ocdscardinal` commands, like:
-
-```bash
-docker run --rm --name cardinal-rs cardinal-rs --help
-```
 
 ## Filesystem
 
 Run `make -s filesystem` to:
 
-- Create `data`, `logs` and `scratch` directories, owned by the current operating system user, if they don't exist
-- Download [Cardinal's settings file](https://github.com/open-contracting/deploy/tree/main/salt/kingfisher/collect/files/cardinal/) to `cardinal.ini`, owned by the current operating system user
+- Create `data` and `logs` directories, owned by the current operating system user, if they don't exist
 
 This must be run:
 
 - by the operating system user that will run the [cron job](#cron),
-- from the working directory for the project (same as the `CARDINAL_WORKDIR` setting).
+- from the working directory for the project (same as the `OCDS_POWERBI_WORKDIR` setting).
 
 ## Cron
 
@@ -172,7 +139,7 @@ The [`cron.sh` script](cron.sh) creates a container from the [`kingfisher-collec
 
   This assumes that an external firewall closes the port of the database server to external connections.
 
-Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `CARDINAL_WORKDIR` setting):
+Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `OCDS_POWERBI_WORKDIR` setting):
 
 ```bash
 make -s print-crontab
@@ -193,52 +160,25 @@ We recommend also setting the `MAILTO` environment variable in the user's cronta
 
 ## Clean
 
-If desired, you can delete the `kingfisher-collect` and `cardinal-rs` directories, which are downloaded by the `build` target, but aren't needed after building images:
+If desired, you can delete the `kingfisher-collect` directorY, which IS downloaded by the `build` target, but aren't needed after building images:
 
 ```bash
 make clean-build
 ```
 
-If you need to start over, delete the cron job manually. Then, delete the `cardinal.ini` file and the `data`, `logs` and `scratch` directories:
+If you need to start over, delete the cron job manually. Then, delete the `data` and `logs` directories:
 
 ```bash
 make force-clean
-```
-
-### Excluded suppliers
-
-If you use the `excluded_supplier` table, you need to schedule a cron job to update the table. For example, for the Dominican Republic, this script can run daily:
-
-```bash
-#!/usr/bin/env bash
-
-set -euo pipefail
-
-# https://datosabiertos.dgcp.gob.do/opendata/tablas
-curl -sSk https://api.dgcp.gob.do/opendata/proveedores/proveedores_inhabilitados.csv |
-    # The first column is the RPE.
-    grep -Eo '^[0-9]+,' |
-    # Sort numerically and uniquely.
-    sort -nu |
-    # Prefix the identifier scheme.
-    sed -E 's/^(.+),$/DO-RPE-\1/' |
-    # Replace the table in a transaction.
-    psql -U kingfisher_collect -h localhost -q -c "BEGIN; DELETE FROM excluded_supplier; COPY excluded_supplier (identifier) FROM stdin; END;"
 ```
 
 ## Disk usage
 
 Kingfisher Collect writes:
 
-- data files to the `data/` directory (>20GB). This directory must not be deleted; otherwise, contracting processes are lost, because Kingfisher Collect downloads only new files.
-- data to a table whose name matches the Kingfisher Collect spider (for example, `ecuador_sercop_bulk`, ~10GB). This table must not be dropped; otherwise, Kingfisher Collect re-downloads all old files, instead of only new files.
+- data files to the `data/` directory (>15GB). This directory must not be deleted; otherwise, contracting processes are lost, because Kingfisher Collect downloads only new files.
+- data to a table whose name matches the Kingfisher Collect spider (for example, `rwanda_api`, ~1GB). This table must not be dropped; otherwise, Kingfisher Collect re-downloads all old files, instead of only new files.
 - log files to the `logs/` directory (<10MB each). To control disk usage, set up log rotation on this directory.
-
-The [cron job](#cron) writes:
-
-- contracting processes to a table whose name suffixes `_clean` to the Kingfisher Collect spider (`ecuador_sercop_bulk_clean`, ~10GB). This table is read by Power BI.
-- indicator results to a table whose name suffixes `_result` to the Kingfisher Collect spider (`ecuador_sercop_bulk_result`, ~50MB). This table is read by Power BI.
-- temporary files (~15GB), that are deleted by the end of the script.
 
 As such, the project requires about 50GB for both permanent and temporary data.
 

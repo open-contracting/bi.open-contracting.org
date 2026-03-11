@@ -10,4 +10,3 @@ RUN apk add libpq
 
 COPY kingfisher-collect/kingfisher_scrapy kingfisher_scrapy
 COPY kingfisher-collect/scrapy.cfg scrapy.cfg
-COPY cardinal-rs/manage.py manage.py
