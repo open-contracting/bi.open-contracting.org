@@ -15,13 +15,13 @@ DATABASE_URL=postgresql://$(DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(D
 MAINTENANCE_DATABASE_URL=postgresql://$(MAINTENANCE_DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(MAINTENANCE_DATABASE_NAME)
 
 env.public:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/env.public
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/default/env.public
 
 cron.sh:
-	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cron.sh
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/default/cron.sh
 
 env.private:
-	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/env.private
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/default/env.private
 
 .PHONY: setup
 setup: env.public cron.sh env.private
@@ -31,7 +31,7 @@ kingfisher-collect:
 	git clone https://github.com/open-contracting/kingfisher-collect.git
 
 Dockerfile_python:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Dockerfile_python
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/default/Dockerfile_python
 
 .PHONY: pull-kingfisher-collect
 pull-kingfisher-collect: kingfisher-collect

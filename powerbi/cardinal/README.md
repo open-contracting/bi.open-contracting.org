@@ -31,7 +31,7 @@ make -s print-crontab | crontab
 Download the [`Makefile`](Makefile) to the current directory:
 
 ```bash
-curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/cardinal_powerbi/Makefile
+curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/cardinal/Makefile
 ```
 
 Download the [`env.public`](env.public), [`cron.sh`](cron.sh) and [`env.private`](env.private) files to the current directory, if they don't exist, and restrict permissions to the `env.private` file (`chmod go-rwx`):
