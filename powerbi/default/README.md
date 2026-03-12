@@ -160,7 +160,7 @@ We recommend also setting the `MAILTO` environment variable in the user's cronta
 
 ## Clean
 
-If desired, you can delete the `kingfisher-collect` directorY, which IS downloaded by the `build` target, but aren't needed after building images:
+If desired, you can delete the `kingfisher-collect` directory, which is downloaded by the `build` target, but isn't needed after building images:
 
 ```bash
 make clean-build
