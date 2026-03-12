@@ -1,6 +1,6 @@
-/powerbi/kingfisher-collect
-/powerbi/cardinal-rs
-/powerbi/*.ini
-/powerbi/data
-/powerbi/logs
-/powerbi/scratch
+/powerbi/*/kingfisher-collect
+/powerbi/*/cardinal-rs
+/powerbi/*/*.ini
+/powerbi/*/data
+/powerbi/*/logs
+/powerbi/*/scratch
