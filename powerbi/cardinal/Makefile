@@ -15,13 +15,13 @@ DATABASE_URL=postgresql://$(DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(D
 MAINTENANCE_DATABASE_URL=postgresql://$(MAINTENANCE_DATABASE_USER)@$(DATABASE_HOST):$(DATABASE_PORT)/$(MAINTENANCE_DATABASE_NAME)
 
 env.public:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/env.public
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/cardinal/env.public
 
 cron.sh:
-	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cron.sh
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cardinal/cron.sh
 
 env.private:
-	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/env.private
+	curl -sSLO https://github.com/open-contracting/bi.open-contracting.org/raw/refs/heads/main/powerbi/cardinal/env.private
 
 .PHONY: setup
 setup: env.public cron.sh env.private
@@ -34,10 +34,10 @@ cardinal-rs:
 	git clone https://github.com/open-contracting/cardinal-rs.git
 
 Dockerfile_cardinal:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Dockerfile_cardinal
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/cardinal/Dockerfile_cardinal
 
 Dockerfile_python:
-	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/Dockerfile_python
+	curl -sSLO https://raw.githubusercontent.com/open-contracting/bi.open-contracting.org/refs/heads/main/powerbi/cardinal/Dockerfile_python
 
 .PHONY: pull-kingfisher-collect
 pull-kingfisher-collect: kingfisher-collect
@@ -128,7 +128,7 @@ filesystem: data logs scratch cardinal.ini
 
 .PHONY: print-crontab
 print-crontab: cron.sh
-	printf "15 0 * * * $(CARDINAL_WORKDIR)/cron.sh\n"
+	printf "15 0 * * * $(OCDS_POWERBI_WORKDIR)/cron.sh\n"
 
 .PHONY: clean-build
 clean-build:
