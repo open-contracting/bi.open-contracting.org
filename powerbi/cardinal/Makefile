@@ -128,7 +128,7 @@ filesystem: data logs scratch cardinal.ini
 
 .PHONY: print-crontab
 print-crontab: cron.sh
-	printf "15 0 * * * $(CARDINAL_WORKDIR)/cron.sh\n"
+	printf "15 0 * * * $(OCDS_POWERBI_WORKDIR)/cron.sh\n"
 
 .PHONY: clean-build
 clean-build:

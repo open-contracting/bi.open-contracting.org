@@ -7,7 +7,7 @@ The [`Makefile`](Makefile) makes this easy to setup. You can configure it by cha
 You must choose an operating system user with read, write and execute permissions to the "working directory" for the project (`chmod 700`, at least). For simplicity, you can:
 
 - Name the operating system user the same as the database user (`DATABASE_USER` setting)
-- Create a home directory for the operating system user, to use as the working directory (`CARDINAL_WORKDIR` setting)
+- Create a home directory for the operating system user, to use as the working directory (`OCDS_POWERBI_WORKDIR` setting)
 - Make the working directory readable and executable by others (`chmod 755`)
 - Change the current directory to the working directory when running the commands below
 
@@ -61,8 +61,8 @@ This step requires a **maintenance database user** (`MAINTENANCE_DATABASE_USER` 
 
 Run `make -s createdb createuser` to:
 
-- Create the **project database** (`DATABASE_NAME` setting, by default `cardinal`), owned by the **maintenance database user**, if it doesn't exist
-- Create the **project database user** (`DATABASE_USER` setting, by default `cardinal`), if it doesn't exist
+- Create the **project database** (`DATABASE_NAME` setting, by default `ocds_powerbi`), owned by the **maintenance database user**, if it doesn't exist
+- Create the **project database user** (`DATABASE_USER` setting, by default `ocds_powerbi`), if it doesn't exist
 
   It will prompt for the project database user's password. Enter the same password as the `DATABASE_PASSWORD` setting.
 
@@ -156,7 +156,7 @@ Run `make -s filesystem` to:
 This must be run:
 
 - by the operating system user that will run the [cron job](#cron),
-- from the working directory for the project (same as the `CARDINAL_WORKDIR` setting).
+- from the working directory for the project (same as the `OCDS_POWERBI_WORKDIR` setting).
 
 ## Cron
 
@@ -172,7 +172,7 @@ The [`cron.sh` script](cron.sh) creates a container from the [`kingfisher-collec
 
   This assumes that an external firewall closes the port of the database server to external connections.
 
-Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `CARDINAL_WORKDIR` setting):
+Preview the crontab entry, to make sure the directory of the `cron.sh` script is correct (if not, edit the `OCDS_POWERBI_WORKDIR` setting):
 
 ```bash
 make -s print-crontab
