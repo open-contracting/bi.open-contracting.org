@@ -41,7 +41,7 @@ psycopg2==2.9.10
     # via -r requirements.in
 pymongo==4.13.2
     # via -r requirements.in
-requests==2.32.4
+requests==2.33.0
     # via
     #   -r requirements.in
     #   ocdsextensionregistry
