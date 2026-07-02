@@ -1,6 +1,2 @@
-click
-ijson
-ocdskit
-psycopg2
-pymongo
-requests
+-r requirements_base.txt
+psycopg[c]
