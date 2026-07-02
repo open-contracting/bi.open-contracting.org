@@ -6,10 +6,11 @@ from pathlib import Path
 
 import click
 import ijson
-import psycopg2
+import psycopg
 import requests
 from ocdskit.combine import merge
-from psycopg2 import extras, sql
+from psycopg import sql
+from psycopg.types.json import Json
 from pymongo import MongoClient
 
 TARGET_TABLE_NAME_PREFIX = "mexico_nuevo_leon"
@@ -23,9 +24,8 @@ COLLECTIONS = [
 ]
 
 
-class Json(extras.Json):
-    def dumps(self, obj):
-        return json.dumps(obj, default=str)  # pymongo decodes to native datetimes
+def dumps(obj):
+    return json.dumps(obj, default=str)  # pymongo decodes to native datetimes
 
 
 # Adapted from kingfisher-collect/kingfisher_scrapy/extensions/database_store.py
@@ -40,11 +40,11 @@ def yield_items_from_directory(crawl_directory):
 
 def update_target_database(connection, collection, data):
     table = f"{TARGET_TABLE_NAME_PREFIX}_{collection}"
-    with connection, connection.cursor() as cursor:
+    with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(sql.SQL("DROP TABLE IF EXISTS {table}").format(table=sql.Identifier(table)))
         cursor.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {table} (data jsonb)").format(table=sql.Identifier(table)))
-        statement = sql.SQL("INSERT INTO {table} (data) VALUES %s").format(table=sql.Identifier(table))
-        extras.execute_values(cursor, statement.as_string(cursor), [(Json(item),) for item in data])
+        statement = sql.SQL("INSERT INTO {table} (data) VALUES (%s)").format(table=sql.Identifier(table))
+        cursor.executemany(statement, [(Json(item, dumps=dumps),) for item in data])
 
 
 @click.command(context_settings={"show_default": True})
@@ -82,7 +82,7 @@ def main(collections, source_db_url, source_db_name, target_db_url, files_store_
         collections = COLLECTIONS
 
     source_database_connection = MongoClient(source_db_url)
-    target_database_connection = psycopg2.connect(target_db_url)
+    target_database_connection = psycopg.connect(target_db_url)
 
     update = partial(update_target_database, target_database_connection)
 

@@ -2,58 +2,87 @@
 #    uv pip compile requirements.in -o requirements.txt
 attrs==25.3.0
     # via
+    #   -r requirements_base.txt
     #   cattrs
     #   requests-cache
 cattrs==25.1.1
-    # via requests-cache
+    # via
+    #   -r requirements_base.txt
+    #   requests-cache
 certifi==2025.7.14
-    # via requests
+    # via
+    #   -r requirements_base.txt
+    #   requests
 charset-normalizer==3.4.2
-    # via requests
+    # via
+    #   -r requirements_base.txt
+    #   requests
 click==8.2.1
-    # via -r requirements.in
+    # via -r requirements_base.txt
 dnspython==2.7.0
-    # via pymongo
+    # via
+    #   -r requirements_base.txt
+    #   pymongo
 idna==3.15
     # via
+    #   -r requirements_base.txt
     #   requests
     #   url-normalize
 ijson==3.4.0
     # via
-    #   -r requirements.in
+    #   -r requirements_base.txt
     #   ocdskit
 json-merge-patch==0.3.0
-    # via ocdsextensionregistry
+    # via
+    #   -r requirements_base.txt
+    #   ocdsextensionregistry
 jsonref==1.1.0
     # via
+    #   -r requirements_base.txt
     #   ocdsextensionregistry
     #   ocdskit
     #   ocdsmerge
 ocdsextensionregistry==0.6.9
-    # via ocdskit
+    # via
+    #   -r requirements_base.txt
+    #   ocdskit
 ocdskit==1.4.0
-    # via -r requirements.in
+    # via -r requirements_base.txt
 ocdsmerge==0.8.0
-    # via ocdskit
+    # via
+    #   -r requirements_base.txt
+    #   ocdskit
 platformdirs==4.3.8
-    # via requests-cache
-psycopg2==2.9.10
+    # via
+    #   -r requirements_base.txt
+    #   requests-cache
+psycopg==3.3.4
     # via -r requirements.in
+psycopg-c==3.3.4
+    # via psycopg
 pymongo==4.13.2
-    # via -r requirements.in
+    # via -r requirements_base.txt
 requests==2.33.0
     # via
-    #   -r requirements.in
+    #   -r requirements_base.txt
     #   ocdsextensionregistry
     #   ocdsmerge
     #   requests-cache
 requests-cache==1.2.1
-    # via ocdsextensionregistry
+    # via
+    #   -r requirements_base.txt
+    #   ocdsextensionregistry
 typing-extensions==4.14.1
-    # via cattrs
+    # via
+    #   -r requirements_base.txt
+    #   cattrs
+    #   psycopg
 url-normalize==2.2.1
-    # via requests-cache
+    # via
+    #   -r requirements_base.txt
+    #   requests-cache
 urllib3==2.7.0
     # via
+    #   -r requirements_base.txt
     #   requests
     #   requests-cache
