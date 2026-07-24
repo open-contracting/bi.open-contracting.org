@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import json
-import os
 from functools import partial
 from pathlib import Path
 
@@ -30,12 +29,9 @@ def dumps(obj):
 
 # Adapted from kingfisher-collect/kingfisher_scrapy/extensions/database_store.py
 def yield_items_from_directory(crawl_directory):
-    for root, _, files in os.walk(crawl_directory):
-        root_path = Path(root)
-        for name in files:
-            if name.endswith(".json"):
-                with (root_path / name).open("rb") as f:
-                    yield from ijson.items(f, "releases.item")
+    for path in Path(crawl_directory).rglob("*.json"):
+        with path.open("rb") as f:
+            yield from ijson.items(f, "releases.item")
 
 
 def update_target_database(connection, collection, data):
