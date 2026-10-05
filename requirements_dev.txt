@@ -56,9 +56,11 @@ platformdirs==4.3.8
     # via
     #   -r requirements_base.txt
     #   requests-cache
-psycopg==3.3.4
-    # via -r requirements_dev.in
-psycopg-binary==3.3.4
+psycopg[binary]==3.3.6
+    # via
+    #   -r requirements_base.txt
+    #   -r requirements_dev.in
+psycopg-binary==3.3.6
     # via psycopg
 pymongo==4.13.2
     # via -r requirements_base.txt
@@ -76,12 +78,11 @@ typing-extensions==4.14.1
     # via
     #   -r requirements_base.txt
     #   cattrs
-    #   psycopg
 url-normalize==2.2.1
     # via
     #   -r requirements_base.txt
     #   requests-cache
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   -r requirements_base.txt
     #   requests
