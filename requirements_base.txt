@@ -37,6 +37,8 @@ ocdsmerge==0.8.0
     # via ocdskit
 platformdirs==4.3.8
     # via requests-cache
+psycopg==3.3.6
+    # via -r requirements_base.in
 pymongo==4.13.2
     # via -r requirements_base.in
 requests==2.33.0
@@ -51,7 +53,7 @@ typing-extensions==4.14.1
     # via cattrs
 url-normalize==2.2.1
     # via requests-cache
-urllib3==2.7.0
+urllib3==2.8.0
     # via
     #   requests
     #   requests-cache
