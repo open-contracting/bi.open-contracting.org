@@ -19,7 +19,7 @@ charset-normalizer==3.4.2
     #   requests
 click==8.2.1
     # via -r requirements_base.txt
-dnspython==2.7.0
+dnspython==2.9.0
     # via
     #   -r requirements_base.txt
     #   pymongo
